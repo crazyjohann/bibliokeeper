@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell } from 'lucide-react';
 
-const BiblioKeeper = () => {
+const App = () => {
   const [currentScreen, setCurrentScreen] = useState('main');
   
   const [books, setBooks] = useState([
@@ -665,8 +665,8 @@ const BiblioKeeper = () => {
             <button
               onClick={handleReturn}
               disabled={!scanInput}
-              className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white py-4 rounded-lg font-semibold text-lg transition-colors"
-            >
+              className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text
+                >
               Process Return
             </button>
           </div>
@@ -1301,4 +1301,4 @@ const BiblioKeeper = () => {
   return renderScreen();
 };
 
-export default BiblioKeeper;
+export default App;
