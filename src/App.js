@@ -14,6 +14,22 @@ const App = () => {
   const [members, setMembers] = useState([
     { id: 'M001', name: 'John Doe', email: 'john@email.com', phone: '555-0123', joinDate: '2024-01-15', membershipType: 'Standard' },
     { id: 'M002', name: 'Jane Smith', email: 'jane@email.com', phone: '555-0456', joinDate: '2024-02-20', membershipType: 'Premium' },
+    { id: 'M003', name: 'Bob Johnson', email: 'bob@email.com', phone: '555-0789', joinDate: '2024-03-10', membershipType: 'import React, { useState, useEffect, useRef } from 'react';
+import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell } from 'lucide-react';
+
+const App = () => {
+  const [currentScreen, setCurrentScreen] = useState('main');
+  
+  const [books, setBooks] = useState([
+    { id: 'B001', title: 'The Great Gatsby', author: 'F. Scott Fitzgerald', isbn: '978-0-7432-7356-5', category: 'Fiction', available: 2, total: 3 },
+    { id: 'B002', title: 'To Kill a Mockingbird', author: 'Harper Lee', isbn: '978-0-06-112008-4', category: 'Fiction', available: 1, total: 2 },
+    { id: 'B003', title: '1984', author: 'George Orwell', isbn: '978-0-452-28423-4', category: 'Dystopian', available: 3, total: 4 },
+    { id: 'B004', title: 'The Catcher in the Rye', author: 'J.D. Salinger', isbn: '978-0-316-76948-0', category: 'Fiction', available: 1, total: 1 }
+  ]);
+  
+  const [members, setMembers] = useState([
+    { id: 'M001', name: 'John Doe', email: 'john@email.com', phone: '555-0123', joinDate: '2024-01-15', membershipType: 'Standard' },
+    { id: 'M002', name: 'Jane Smith', email: 'jane@email.com', phone: '555-0456', joinDate: '2024-02-20', membershipType: 'Premium' },
     { id: 'M003', name: 'Bob Johnson', email: 'bob@email.com', phone: '555-0789', joinDate: '2024-03-10', membershipType: 'Standard' }
   ]);
   
