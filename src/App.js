@@ -1,7 +1,93 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from "react";
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
 import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell } from 'lucide-react';
 
-const App = () => {
+// Firebase config
+const firebaseConfig = {
+  apiKey: "AlzaSyCeJLBYthkoyaMckgTT0vnoZ_slXYrvC4", 
+  authDomain: "bibliokeeper.firebaseapp.com",
+  projectId: "bibliokeeper",
+  storageBucket: "bibliokeeper.appspot.com",
+  messagingSenderId: "771697995545",
+  appId: "1:771697995545:web:c23b431eb9321dbd49df88"
+};
+
+function isPlaceholderConfig(cfg) {
+  return Object.values(cfg).some(
+    (v) => typeof v === "string" && v.includes("YOUR_")
+  );
+}
+
+function ensureFirebaseApp() {
+  if (typeof window === "undefined") return null;
+  if (getApps().length) {
+    return getApps()[0];
+  }
+  try {
+    return initializeApp(firebaseConfig);
+  } catch (err) {
+    console.error("Firebase initialization error:", err);
+    return null;
+  }
+}
+
+// Login Component
+const LoginScreen = ({ onLogin }) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleLogin = async () => {
+    setLoading(true);
+    setError(null);
+
+    if (isPlaceholderConfig(firebaseConfig)) {
+      setError("Firebase config still incomplete. Check your values.");
+      setLoading(false);
+      return;
+    }
+
+    const app = ensureFirebaseApp();
+    if (!app) {
+      setError("Unable to initialize Firebase app. Check console for details.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const auth = getAuth(app);
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      onLogin(result.user);
+    } catch (err) {
+      console.error("Auth error:", err);
+      setError(err?.message || "Login failed. See console for details.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-100 to-blue-200">
+      <div className="bg-white p-8 rounded-2xl shadow-xl text-center w-96">
+        <h1 className="text-3xl font-bold mb-4">📚 Librarian Login</h1>
+        <p className="text-sm text-gray-600 mb-4">Sign in with a Google account authorized by the library.</p>
+        {error && <p className="text-red-500 mb-4">{error}</p>}
+
+        <button
+          onClick={handleLogin}
+          disabled={loading}
+          className="bg-red-500 hover:bg-red-600 disabled:opacity-60 text-white px-6 py-3 rounded-xl font-semibold w-full"
+        >
+          {loading ? "Signing in..." : "Sign in with Google"}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Main Library App with Authentication
+const LibraryApp = ({ user, onLogout }) => {
   const [currentScreen, setCurrentScreen] = useState('main');
   
   const [books, setBooks] = useState([
@@ -58,6 +144,31 @@ const App = () => {
 
   const findBook = (bookId) => books.find(book => book.id === bookId || book.isbn === bookId);
   const findMember = (memberId) => members.find(member => member.id === memberId);
+
+  // Memoized event handlers to prevent re-renders and focus loss
+  const handleScanInputChange = useCallback((e) => {
+    setScanInput(e.target.value);
+  }, []);
+
+  const handleMemberScanInputChange = useCallback((e) => {
+    setMemberScanInput(e.target.value);
+  }, []);
+
+  const handleSearchQueryChange = useCallback((e) => {
+    setSearchQuery(e.target.value);
+  }, []);
+
+  const handleNewBookChange = useCallback((field, value) => {
+    setNewBook(prev => ({...prev, [field]: value}));
+  }, []);
+
+  const handleNewMemberChange = useCallback((field, value) => {
+    setNewMember(prev => ({...prev, [field]: value}));
+  }, []);
+
+  const handleSettingsChange = useCallback((field, value) => {
+    setSettings(prev => ({...prev, [field]: value}));
+  }, []);
 
   // Barcode scanning functionality
   const startBarcodeScanning = (type) => {
@@ -379,6 +490,7 @@ const App = () => {
               📚 {settings.libraryName}
             </h1>
             <p className="text-gray-600 text-lg">Church Library Management System</p>
+            <p className="text-sm text-gray-500 mt-2">Logged in as: {user?.email}</p>
           </div>
           
           <div className="flex gap-3">
@@ -406,6 +518,13 @@ const App = () => {
               className="p-3 bg-white rounded-lg shadow-lg hover:shadow-xl transition-all"
             >
               <Settings className="w-6 h-6 text-gray-600" />
+            </button>
+
+            <button
+              onClick={onLogout}
+              className="p-3 bg-red-500 text-white rounded-lg shadow-lg hover:shadow-xl transition-all"
+            >
+              Logout
             </button>
           </div>
         </div>
@@ -529,7 +648,7 @@ const App = () => {
                     <input
                       type="text"
                       value={scanInput}
-                      onChange={(e) => setScanInput(e.target.value)}
+                      onChange={handleScanInputChange}
                       placeholder="Enter book ID or ISBN"
                       className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                     />
@@ -557,7 +676,7 @@ const App = () => {
                     <input
                       type="text"
                       value={memberScanInput}
-                      onChange={(e) => setMemberScanInput(e.target.value)}
+                      onChange={handleMemberScanInputChange}
                       placeholder="Enter member ID"
                       className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                     />
@@ -1300,4 +1419,33 @@ const App = () => {
   return renderScreen();
 };
 
-export default App;
+// Root Component handling Authentication
+const Root = () => {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && !isPlaceholderConfig(firebaseConfig)) {
+      ensureFirebaseApp();
+    }
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      const app = ensureFirebaseApp();
+      if (app) {
+        const auth = getAuth(app);
+        await signOut(auth);
+      }
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+    setUser(null);
+  };
+
+  if (!user) {
+    return <LoginScreen onLogin={setUser} />;
+  }
+  return <LibraryApp user={user} onLogout={handleLogout} />;
+};
+
+export default Root;
