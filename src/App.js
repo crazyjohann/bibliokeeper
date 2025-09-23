@@ -1379,7 +1379,7 @@ const LibraryApp = ({ user, onLogout }) => {
             <div className="pt-6 border-t border-gray-200">
               <button
                 onClick={() => {
-                  if (confirm('This will reset all settings to defaults. Continue?')) {
+                  
                     setSettings({
                       libraryName: 'Bibliokeeper',
                       maxLoansPerMember: 10,
