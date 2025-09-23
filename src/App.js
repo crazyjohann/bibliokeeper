@@ -1,16 +1,784 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+<button 
+                      onClick={() => startBarcodeScanning('member')}
+                      className="px-4 py-3 bg-green-500 text-white border border-green-500 rounded-r-lg hover:bg-green-600"
+                    >
+                      <Camera className="w-5 h-5" />
+                    </button>
+                  </div>
+                  {selectedMemberData && (
+                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="font-medium text-blue-800">{selectedMemberData.name}</div>
+                      <div className="text-sm text-blue-600">{selectedMemberData.email}</div>
+                      <div className="text-sm text-blue-600">Type: {selectedMemberData.membershipType}</div>
+                    </div>
+                  )}
+                </div>
+                
+                <button
+                  onClick={handleLoan}
+                  disabled={!scanInput || !memberScanInput}
+                  className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white py-4 rounded-lg font-semibold text-lg transition-colors"
+                >
+                  Process Loan
+                </button>
+              </div>
+              
+              {selectedMemberData && (
+                <div>
+                  <h3 className="text-xl font-semibold mb-4">
+                    Current Loans ({currentMemberLoans.length}/{settings.maxLoansPerMember})
+                  </h3>
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {currentMemberLoans.length === 0 ? (
+                      <p className="text-gray-500 text-center py-8">No active loans</p>
+                    ) : (
+                      currentMemberLoans.map(loan => {
+                        const isOverdue = new Date().toISOString().split('T')[0] > loan.dueDate;
+                        return (
+                          <div key={loan.id} className={`p-4 rounded-lg border-2 ${isOverdue ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+                            <div className="font-medium">{loan.book?.title}</div>
+                            <div className="text-sm text-gray-600">
+                              Due: {loan.dueDate} {isOverdue && <span className="text-red-600 font-medium">(OVERDUE)</span>}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        <BarcodeScannerModal />
+      </div>
+    );
+  };
+
+  const ReturnScreen = () => (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-100 p-6">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          <div className="flex items-center mb-6">
+            <button
+              onClick={() => setCurrentScreen('main')}
+              className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            <h2 className="text-3xl font-bold text-gray-800">Return Book</h2>
+          </div>
+          
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Book ID / ISBN
+              </label>
+              <div className="flex">
+                <input
+                  type="text"
+                  value={scanInput}
+                  onChange={handleScanInputChange}
+                  placeholder="Enter book ID or ISBN"
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button 
+                  onClick={() => startBarcodeScanning('book')}
+                  className="px-4 py-3 bg-blue-500 text-white border border-blue-500 rounded-r-lg hover:bg-blue-600"
+                >
+                  <Camera className="w-5 h-5" />
+                </button>
+              </div>
+              {scanInput && findBook(scanInput) && (
+                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="font-medium text-blue-800">{findBook(scanInput).title}</div>
+                  <div className="text-sm text-blue-600">by {findBook(scanInput).author}</div>
+                </div>
+              )}
+            </div>
+            
+            <button
+              onClick={handleReturn}
+              disabled={!scanInput}
+              className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white py-4 rounded-lg font-semibold text-lg transition-colors"
+            >
+              Process Return
+            </button>
+          </div>
+          
+          <div className="mt-8">
+            <h3 className="text-xl font-semibold mb-4">Recent Returns</h3>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {loans.filter(loan => loan.status === 'returned').slice(0, 5).map(loan => {
+                const book = findBook(loan.bookId);
+                const member = findMember(loan.memberId);
+                return (
+                  <div key={loan.id} className="bg-gray-50 p-3 rounded-lg">
+                    <div className="font-medium">{book?.title}</div>
+                    <div className="text-sm text-gray-600">
+                      Returned by {member?.name} on {loan.returnDate}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <BarcodeScannerModal />
+    </div>
+  );
+
+  const InventoryScreen = () => {
+    const filteredBooks = getFilteredBooks();
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-100 p-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white rounded-xl shadow-lg p-8">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center">
+                <button
+                  onClick={() => setCurrentScreen('main')}
+                  className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
+                >
+                  <ArrowLeft className="w-6 h-6" />
+                </button>
+                <h2 className="text-3xl font-bold text-gray-800">Inventory Management</h2>
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={exportData}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+                >
+                  <Download className="w-4 h-4" />
+                  Export
+                </button>
+                <label className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 cursor-pointer">
+                  <Upload className="w-4 h-4" />
+                  Import
+                  <input type="file" accept=".json" onChange={importData} className="hidden" />
+                </label>
+              </div>
+            </div>
+            
+            <div className="mb-6">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={handleSearchQueryChange}
+                  placeholder="Search books by title, author, ISBN, category, or ID..."
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-1">
+                <h3 className="text-xl font-semibold mb-4 flex items-center">
+                  <Plus className="w-5 h-5 mr-2" />
+                  Add New Book
+                </h3>
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    value={newBook.title}
+                    onChange={(e) => handleNewBookChange('title', e.target.value)}
+                    placeholder="Book Title *"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <input
+                    type="text"
+                    value={newBook.author}
+                    onChange={(e) => handleNewBookChange('author', e.target.value)}
+                    placeholder="Author *"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <input
+                    type="text"
+                    value={newBook.isbn}
+                    onChange={(e) => handleNewBookChange('isbn', e.target.value)}
+                    placeholder="ISBN *"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <select
+                    value={newBook.category}
+                    onChange={(e) => handleNewBookChange('category', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="">Select Category</option>
+                    <option value="Fiction">Fiction</option>
+                    <option value="Non-Fiction">Non-Fiction</option>
+                    <option value="Christian Living">Christian Living</option>
+                    <option value="Theology">Theology</option>
+                    <option value="Biography">Biography</option>
+                    <option value="Children">Children</option>
+                    <option value="Youth">Youth</option>
+                    <option value="Reference">Reference</option>
+                  </select>
+                  <input
+                    type="number"
+                    value={newBook.quantity}
+                    onChange={(e) => handleNewBookChange('quantity', e.target.value)}
+                    placeholder="Quantity"
+                    min="1"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <button
+                    onClick={handleAddBook}
+                    className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-semibold"
+                  >
+                    Add Book
+                  </button>
+                </div>
+              </div>
+              
+              <div className="lg:col-span-2">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold">
+                    Book Collection ({filteredBooks.length})
+                  </h3>
+                  <div className="text-sm text-gray-600">
+                    Total copies: {filteredBooks.reduce((sum, book) => sum + book.total, 0)}
+                  </div>
+                </div>
+                
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {filteredBooks.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">No books found</p>
+                  ) : (
+                    filteredBooks.map(book => {
+                      const activeLoans = loans.filter(loan => loan.bookId === book.id && loan.status === 'active').length;
+                      return (
+                        <div key={book.id} className="bg-gray-50 p-4 rounded-lg">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="font-medium text-lg">{book.title}</div>
+                              <div className="text-gray-600">by {book.author}</div>
+                              <div className="text-sm text-gray-500 mt-1">
+                                ISBN: {book.isbn} | Category: {book.category}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                ID: {book.id} | Available: {book.available}/{book.total}
+                                {activeLoans > 0 && <span className="ml-2 text-blue-600">({activeLoans} on loan)</span>}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteBook(book.id)}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg ml-4"
+                              title="Delete book"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const MembersScreen = () => {
+    const filteredMembers = getFilteredMembers();
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-violet-100 p-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white rounded-xl shadow-lg p-8">
+            <div className="flex items-center mb-6">
+              <button
+                onClick={() => setCurrentScreen('main')}
+                className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+              <h2 className="text-3xl font-bold text-gray-800">Members Management</h2>
+            </div>
+            
+            <div className="mb-6">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={handleSearchQueryChange}
+                  placeholder="Search members by name, email, or ID..."
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-1">
+                <h3 className="text-xl font-semibold mb-4 flex items-center">
+                  <Plus className="w-5 h-5 mr-2" />
+                  Add New Member
+                </h3>
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    value={newMember.name}
+                    onChange={(e) => handleNewMemberChange('name', e.target.value)}
+                    placeholder="Full Name *"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <input
+                    type="email"
+                    value={newMember.email}
+                    onChange={(e) => handleNewMemberChange('email', e.target.value)}
+                    placeholder="Email Address *"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <input
+                    type="tel"
+                    value={newMember.phone}
+                    onChange={(e) => handleNewMemberChange('phone', e.target.value)}
+                    placeholder="Phone Number"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <select
+                    value={newMember.membershipType}
+                    onChange={(e) => handleNewMemberChange('membershipType', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="Standard">Standard</option>
+                    <option value="Student">Student</option>
+                    <option value="Senior">Senior</option>
+                    <option value="Staff">Church Staff</option>
+                  </select>
+                  <button
+                    onClick={handleAddMember}
+                    className="w-full bg-purple-500 hover:bg-purple-600 text-white py-3 rounded-lg font-semibold"
+                  >
+                    Add Member
+                  </button>
+                </div>
+              </div>
+              
+              <div className="lg:col-span-2">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold">
+                    Member Directory ({filteredMembers.length})
+                  </h3>
+                </div>
+                
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {filteredMembers.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">No members found</p>
+                  ) : (
+                    filteredMembers.map(member => {
+                      const memberLoans = getMemberLoans(member.id);
+                      const memberOverdue = overdueItems.filter(item => item.memberId === member.id);
+                      return (
+                        <div key={member.id} className="bg-gray-50 p-4 rounded-lg">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="font-medium text-lg">{member.name}</div>
+                              <div className="text-gray-600">{member.email}</div>
+                              {member.phone && (
+                                <div className="text-sm text-gray-500">{member.phone}</div>
+                              )}
+                              <div className="text-sm text-gray-500 mt-1">
+                                ID: {member.id} | Type: {member.membershipType} | Joined: {member.joinDate}
+                              </div>
+                              <div className="text-sm mt-1">
+                                <span className="text-blue-600">
+                                  Active Loans: {memberLoans.length}/{settings.maxLoansPerMember}
+                                </span>
+                                {memberOverdue.length > 0 && (
+                                  <span className="ml-3 text-red-600">
+                                    Overdue: {memberOverdue.length}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteMember(member.id)}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg ml-4"
+                              title="Delete member"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const NotificationsScreen = () => (
+    <div className="min-h-screen bg-gradient-to-br from-red-50 to-pink-100 p-6">
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center">
+              <button
+                onClick={() => setCurrentScreen('main')}
+                className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+              <h2 className="text-3xl font-bold text-gray-800">Notifications</h2>
+            </div>
+            <button
+              onClick={() => setNotifications([])}
+              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+            >
+              Clear All
+            </button>
+          </div>
+          
+          <div className="space-y-4">
+            {notifications.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No notifications</p>
+            ) : (
+              notifications.map(notification => (
+                <div key={notification.id} className="p-4 rounded-lg border-l-4 bg-blue-50 border-blue-500">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <p className="font-medium">{notification.message}</p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {new Date(notification.date).toLocaleString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setNotifications(notifications.filter(n => n.id !== notification.id))}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const ReportsScreen = () => {
+    const totalBooks = books.reduce((sum, book) => sum + book.total, 0);
+    const totalLoans = loans.filter(loan => loan.status === 'active').length;
+    const overdueCount = overdueItems.length;
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-blue-100 p-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white rounded-xl shadow-lg p-8">
+            <div className="flex items-center mb-8">
+              <button
+                onClick={() => setCurrentScreen('main')}
+                className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+              <h2 className="text-3xl font-bold text-gray-800">Reports & Analytics</h2>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div className="bg-blue-50 p-6 rounded-xl">
+                <h3 className="text-lg font-semibold text-blue-800 mb-2">Collection Size</h3>
+                <p className="text-3xl font-bold text-blue-600">{totalBooks}</p>
+                <p className="text-sm text-blue-600">Total books</p>
+              </div>
+              
+              <div className="bg-green-50 p-6 rounded-xl">
+                <h3 className="text-lg font-semibold text-green-800 mb-2">Circulation</h3>
+                <p className="text-3xl font-bold text-green-600">{totalLoans}</p>
+                <p className="text-sm text-green-600">Active loans</p>
+              </div>
+              
+              <div className="bg-red-50 p-6 rounded-xl">
+                <h3 className="text-lg font-semibold text-red-800 mb-2">Overdue Items</h3>
+                <p className="text-3xl font-bold text-red-600">{overdueCount}</p>
+                <p className="text-sm text-red-600">Need attention</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div>
+                <h3 className="text-xl font-semibold mb-4">Most Borrowed Books</h3>
+                <div className="space-y-3">
+                  {books.map(book => {
+                    const loanCount = loans.filter(loan => loan.bookId === book.id).length;
+                    return loanCount > 0 ? (
+                      <div key={book.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <div className="font-medium">{book.title}</div>
+                          <div className="text-sm text-gray-600">{book.author}</div>
+                        </div>
+                        <div className="text-lg font-bold text-blue-600">{loanCount}</div>
+                      </div>
+                    ) : null;
+                  }).filter(Boolean).slice(0, 5)}
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-xl font-semibold mb-4">Active Members</h3>
+                <div className="space-y-3">
+                  {members.map(member => {
+                    const loanCount = getMemberLoans(member.id).length;
+                    return loanCount > 0 ? (
+                      <div key={member.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <div>
+                          <div className="font-medium">{member.name}</div>
+                          <div className="text-sm text-gray-600">{member.membershipType}</div>
+                        </div>
+                        <div className="text-lg font-bold text-purple-600">{loanCount}</div>
+                      </div>
+                    ) : null;
+                  }).filter(Boolean).slice(0, 5)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const SettingsScreen = () => (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-slate-100 p-6">
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          <div className="flex items-center mb-8">
+            <button
+              onClick={() => setCurrentScreen('main')}
+              className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            <h2 className="text-3xl font-bold text-gray-800">Library Settings</h2>
+          </div>
+          
+          <div className="space-y-8">
+            <div>
+              <h3 className="text-xl font-semibold mb-4">Library Information</h3>
+              <div className="grid grid-cols-1 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Library Name
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.libraryName}
+                    onChange={(e) => handleSettingsChange('libraryName', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <h3 className="text-xl font-semibold mb-4">Loan Policies</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Maximum loans per member
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.maxLoansPerMember}
+                    onChange={(e) => handleSettingsChange('maxLoansPerMember', parseInt(e.target.value))}
+                    min="1"
+                    max="50"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Loan period (days)
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.loanPeriodDays}
+                    onChange={(e) => handleSettingsChange('loanPeriodDays', parseInt(e.target.value))}
+                    min="1"
+                    max="90"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <h3 className="text-xl font-semibold mb-4">Features</h3>
+              <div className="space-y-4">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={settings.allowReservations}
+                    onChange={(e) => handleSettingsChange('allowReservations', e.target.checked)}
+                    className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span>Allow book reservations</span>
+                </label>
+                
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={settings.autoReminders}
+                    onChange={(e) => handleSettingsChange('autoReminders', e.target.checked)}
+                    className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span>Send automatic overdue reminders</span>
+                </label>
+                
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={settings.enableFines}
+                    onChange={(e) => handleSettingsChange('enableFines', e.target.checked)}
+                    className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span>Enable overdue fines (not recommended for church libraries)</span>
+                </label>
+                
+                {settings.enableFines && (
+                  <div className="ml-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Fine per day ($)
+                    </label>
+                    <input
+                      type="number"
+                      value={settings.finePerDay}
+                      onChange={(e) => handleSettingsChange('finePerDay', parseFloat(e.target.value))}
+                      min="0"
+                      step="0.01"
+                      className="w-32 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div>
+              <h3 className="text-xl font-semibold mb-4">Data Management</h3>
+              <div className="flex gap-4">
+                <button
+                  onClick={exportData}
+                  className="flex items-center gap-2 px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600"
+                >
+                  <Download className="w-5 h-5" />
+                  Export All Data
+                </button>
+                <label className="flex items-center gap-2 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 cursor-pointer">
+                  <Upload className="w-5 h-5" />
+                  Import Data
+                  <input type="file" accept=".json" onChange={importData} className="hidden" />
+                </label>
+              </div>
+              <p className="text-sm text-gray-600 mt-2">
+                Export creates a backup of all library data. Import allows you to restore from a previous backup.
+              </p>
+            </div>
+            
+            <div className="pt-6 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  if (window.confirm('This will reset all settings to defaults. Continue?')) {
+                    setSettings({
+                      libraryName: 'Bibliokeeper',
+                      maxLoansPerMember: 10,
+                      loanPeriodDays: 14,
+                      enableFines: false,
+                      finePerDay: 0.00,
+                      allowReservations: true,
+                      autoReminders: true
+                    });
+                    alert('Settings reset to defaults.');
+                  }
+                }}
+                className="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600"
+              >
+                Reset to Defaults
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderScreen = () => {
+    switch(currentScreen) {
+      case 'loan': return <LoanScreen />;
+      case 'return': return <ReturnScreen />;
+      case 'inventory': return <InventoryScreen />;
+      case 'members': return <MembersScreen />;
+      case 'notifications': return <NotificationsScreen />;
+      case 'reports': return <ReportsScreen />;
+      case 'settings': return <SettingsScreen />;
+      default: return <MainScreen />;
+    }
+  };
+
+  return renderScreen();
+};
+
+// Root Component handling Authentication
+const Root = () => {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && !isPlaceholderConfig(firebaseConfig)) {
+      ensureFirebaseApp();
+    }
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      const app = ensureFirebaseApp();
+      if (app) {
+        const auth = getAuth(app);
+        await signOut(auth);
+      }
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+    setUser(null);
+  };
+
+  if (!user) {
+    return <LoginScreen onLogin={setUser} />;
+  }
+  return <LibraryApp user={user} onLogout={handleLogout} />;
+};
+
+export default Root;import React, { useEffect, useState, useRef, useCallback } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
 import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell } from 'lucide-react';
 
 // Firebase config
 const firebaseConfig = {
-  apiKey: "AlzaSyCeJLBYthkoyaMckgTT0vnoZ_slXYrvC4", 
-  authDomain: "bibliokeeper.firebaseapp.com",
-  projectId: "bibliokeeper",
-  storageBucket: "bibliokeeper.appspot.com",
-  messagingSenderId: "771697995545",
-  appId: "1:771697995545:web:c23b431eb9321dbd49df88"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AlzaSyCeJLBYthkoyaMckgTT0vnoZ_slXYrvC4", 
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "bibliokeeper.firebaseapp.com",
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "bibliokeeper",
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "bibliokeeper.appspot.com",
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "771697995545",
+  appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:771697995545:web:c23b431eb9321dbd49df88"
 };
 
 function isPlaceholderConfig(cfg) {
@@ -681,771 +1449,4 @@ const LibraryApp = ({ user, onLogout }) => {
                       className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                     />
                     <button 
-                      onClick={() => startBarcodeScanning('member')}
-                      className="px-4 py-3 bg-green-500 text-white border border-green-500 rounded-r-lg hover:bg-green-600"
-                    >
-                      <Camera className="w-5 h-5" />
-                    </button>
-                  </div>
-                  {selectedMemberData && (
-                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="font-medium text-blue-800">{selectedMemberData.name}</div>
-                      <div className="text-sm text-blue-600">{selectedMemberData.email}</div>
-                      <div className="text-sm text-blue-600">Type: {selectedMemberData.membershipType}</div>
-                    </div>
-                  )}
-                </div>
-                
-                <button
-                  onClick={handleLoan}
-                  disabled={!scanInput || !memberScanInput}
-                  className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white py-4 rounded-lg font-semibold text-lg transition-colors"
-                >
-                  Process Loan
-                </button>
-              </div>
-              
-              {selectedMemberData && (
-                <div>
-                  <h3 className="text-xl font-semibold mb-4">
-                    Current Loans ({currentMemberLoans.length}/{settings.maxLoansPerMember})
-                  </h3>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {currentMemberLoans.length === 0 ? (
-                      <p className="text-gray-500 text-center py-8">No active loans</p>
-                    ) : (
-                      currentMemberLoans.map(loan => {
-                        const isOverdue = new Date().toISOString().split('T')[0] > loan.dueDate;
-                        return (
-                          <div key={loan.id} className={`p-4 rounded-lg border-2 ${isOverdue ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
-                            <div className="font-medium">{loan.book?.title}</div>
-                            <div className="text-sm text-gray-600">
-                              Due: {loan.dueDate} {isOverdue && <span className="text-red-600 font-medium">(OVERDUE)</span>}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        <BarcodeScannerModal />
-      </div>
-    );
-  };
-
-  const ReturnScreen = () => (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-100 p-6">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="flex items-center mb-6">
-            <button
-              onClick={() => setCurrentScreen('main')}
-              className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
-            >
-              <ArrowLeft className="w-6 h-6" />
-            </button>
-            <h2 className="text-3xl font-bold text-gray-800">Return Book</h2>
-          </div>
-          
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Book ID / ISBN
-              </label>
-              <div className="flex">
-                <input
-                  type="text"
-                  value={scanInput}
-                  onChange={(e) => setScanInput(e.target.value)}
-                  placeholder="Enter book ID or ISBN"
-                  className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button 
-                  onClick={() => startBarcodeScanning('book')}
-                  className="px-4 py-3 bg-blue-500 text-white border border-blue-500 rounded-r-lg hover:bg-blue-600"
-                >
-                  <Camera className="w-5 h-5" />
-                </button>
-              </div>
-              {scanInput && findBook(scanInput) && (
-                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="font-medium text-blue-800">{findBook(scanInput).title}</div>
-                  <div className="text-sm text-blue-600">by {findBook(scanInput).author}</div>
-                </div>
-              )}
-            </div>
-            
-            <button
-              onClick={handleReturn}
-              disabled={!scanInput}
-              className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white py-4 rounded-lg font-semibold text-lg transition-colors"
-            >
-              Process Return
-            </button>
-          </div>
-          
-          <div className="mt-8">
-            <h3 className="text-xl font-semibold mb-4">Recent Returns</h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {loans.filter(loan => loan.status === 'returned').slice(0, 5).map(loan => {
-                const book = findBook(loan.bookId);
-                const member = findMember(loan.memberId);
-                return (
-                  <div key={loan.id} className="bg-gray-50 p-3 rounded-lg">
-                    <div className="font-medium">{book?.title}</div>
-                    <div className="text-sm text-gray-600">
-                      Returned by {member?.name} on {loan.returnDate}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <BarcodeScannerModal />
-    </div>
-  );
-
-  const InventoryScreen = () => {
-    const filteredBooks = getFilteredBooks();
-    
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-100 p-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="bg-white rounded-xl shadow-lg p-8">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center">
-                <button
-                  onClick={() => setCurrentScreen('main')}
-                  className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
-                >
-                  <ArrowLeft className="w-6 h-6" />
-                </button>
-                <h2 className="text-3xl font-bold text-gray-800">Inventory Management</h2>
-              </div>
-              
-              <div className="flex gap-3">
-                <button
-                  onClick={exportData}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
-                >
-                  <Download className="w-4 h-4" />
-                  Export
-                </button>
-                <label className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 cursor-pointer">
-                  <Upload className="w-4 h-4" />
-                  Import
-                  <input type="file" accept=".json" onChange={importData} className="hidden" />
-                </label>
-              </div>
-            </div>
-            
-            <div className="mb-6">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search books by title, author, ISBN, category, or ID..."
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-1">
-                <h3 className="text-xl font-semibold mb-4 flex items-center">
-                  <Plus className="w-5 h-5 mr-2" />
-                  Add New Book
-                </h3>
-                <div className="space-y-4">
-                  <input
-                    type="text"
-                    value={newBook.title}
-                    onChange={(e) => setNewBook({...newBook, title: e.target.value})}
-                    placeholder="Book Title *"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  <input
-                    type="text"
-                    value={newBook.author}
-                    onChange={(e) => setNewBook({...newBook, author: e.target.value})}
-                    placeholder="Author *"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  <input
-                    type="text"
-                    value={newBook.isbn}
-                    onChange={(e) => setNewBook({...newBook, isbn: e.target.value})}
-                    placeholder="ISBN *"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  <select
-                    value={newBook.category}
-                    onChange={(e) => setNewBook({...newBook, category: e.target.value})}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  >
-                    <option value="">Select Category</option>
-                    <option value="Fiction">Fiction</option>
-                    <option value="Non-Fiction">Non-Fiction</option>
-                    <option value="Christian Living">Christian Living</option>
-                    <option value="Theology">Theology</option>
-                    <option value="Biography">Biography</option>
-                    <option value="Children">Children</option>
-                    <option value="Youth">Youth</option>
-                    <option value="Reference">Reference</option>
-                  </select>
-                  <input
-                    type="number"
-                    value={newBook.quantity}
-                    onChange={(e) => setNewBook({...newBook, quantity: e.target.value})}
-                    placeholder="Quantity"
-                    min="1"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  <button
-                    onClick={handleAddBook}
-                    className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-semibold"
-                  >
-                    Add Book
-                  </button>
-                </div>
-              </div>
-              
-              <div className="lg:col-span-2">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-semibold">
-                    Book Collection ({filteredBooks.length})
-                  </h3>
-                  <div className="text-sm text-gray-600">
-                    Total copies: {filteredBooks.reduce((sum, book) => sum + book.total, 0)}
-                  </div>
-                </div>
-                
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {filteredBooks.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">No books found</p>
-                  ) : (
-                    filteredBooks.map(book => {
-                      const activeLoans = loans.filter(loan => loan.bookId === book.id && loan.status === 'active').length;
-                      return (
-                        <div key={book.id} className="bg-gray-50 p-4 rounded-lg">
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <div className="font-medium text-lg">{book.title}</div>
-                              <div className="text-gray-600">by {book.author}</div>
-                              <div className="text-sm text-gray-500 mt-1">
-                                ISBN: {book.isbn} | Category: {book.category}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                ID: {book.id} | Available: {book.available}/{book.total}
-                                {activeLoans > 0 && <span className="ml-2 text-blue-600">({activeLoans} on loan)</span>}
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => handleDeleteBook(book.id)}
-                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg ml-4"
-                              title="Delete book"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const MembersScreen = () => {
-    const filteredMembers = getFilteredMembers();
-    
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-violet-100 p-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="bg-white rounded-xl shadow-lg p-8">
-            <div className="flex items-center mb-6">
-              <button
-                onClick={() => setCurrentScreen('main')}
-                className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
-              >
-                <ArrowLeft className="w-6 h-6" />
-              </button>
-              <h2 className="text-3xl font-bold text-gray-800">Members Management</h2>
-            </div>
-            
-            <div className="mb-6">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search members by name, email, or ID..."
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-1">
-                <h3 className="text-xl font-semibold mb-4 flex items-center">
-                  <Plus className="w-5 h-5 mr-2" />
-                  Add New Member
-                </h3>
-                <div className="space-y-4">
-                  <input
-                    type="text"
-                    value={newMember.name}
-                    onChange={(e) => setNewMember({...newMember, name: e.target.value})}
-                    placeholder="Full Name *"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
-                  <input
-                    type="email"
-                    value={newMember.email}
-                    onChange={(e) => setNewMember({...newMember, email: e.target.value})}
-                    placeholder="Email Address *"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
-                  <input
-                    type="tel"
-                    value={newMember.phone}
-                    onChange={(e) => setNewMember({...newMember, phone: e.target.value})}
-                    placeholder="Phone Number"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
-                  <select
-                    value={newMember.membershipType}
-                    onChange={(e) => setNewMember({...newMember, membershipType: e.target.value})}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option value="Standard">Standard</option>
-                    <option value="Student">Student</option>
-                    <option value="Senior">Senior</option>
-                    <option value="Staff">Church Staff</option>
-                  </select>
-                  <button
-                    onClick={handleAddMember}
-                    className="w-full bg-purple-500 hover:bg-purple-600 text-white py-3 rounded-lg font-semibold"
-                  >
-                    Add Member
-                  </button>
-                </div>
-              </div>
-              
-              <div className="lg:col-span-2">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-semibold">
-                    Member Directory ({filteredMembers.length})
-                  </h3>
-                </div>
-                
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {filteredMembers.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">No members found</p>
-                  ) : (
-                    filteredMembers.map(member => {
-                      const memberLoans = getMemberLoans(member.id);
-                      const memberOverdue = overdueItems.filter(item => item.memberId === member.id);
-                      return (
-                        <div key={member.id} className="bg-gray-50 p-4 rounded-lg">
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <div className="font-medium text-lg">{member.name}</div>
-                              <div className="text-gray-600">{member.email}</div>
-                              {member.phone && (
-                                <div className="text-sm text-gray-500">{member.phone}</div>
-                              )}
-                              <div className="text-sm text-gray-500 mt-1">
-                                ID: {member.id} | Type: {member.membershipType} | Joined: {member.joinDate}
-                              </div>
-                              <div className="text-sm mt-1">
-                                <span className="text-blue-600">
-                                  Active Loans: {memberLoans.length}/{settings.maxLoansPerMember}
-                                </span>
-                                {memberOverdue.length > 0 && (
-                                  <span className="ml-3 text-red-600">
-                                    Overdue: {memberOverdue.length}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => handleDeleteMember(member.id)}
-                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg ml-4"
-                              title="Delete member"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const NotificationsScreen = () => (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-pink-100 p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center">
-              <button
-                onClick={() => setCurrentScreen('main')}
-                className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
-              >
-                <ArrowLeft className="w-6 h-6" />
-              </button>
-              <h2 className="text-3xl font-bold text-gray-800">Notifications</h2>
-            </div>
-            <button
-              onClick={() => setNotifications([])}
-              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-            >
-              Clear All
-            </button>
-          </div>
-          
-          <div className="space-y-4">
-            {notifications.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No notifications</p>
-            ) : (
-              notifications.map(notification => (
-                <div key={notification.id} className="p-4 rounded-lg border-l-4 bg-blue-50 border-blue-500">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <p className="font-medium">{notification.message}</p>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {new Date(notification.date).toLocaleString()}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setNotifications(notifications.filter(n => n.id !== notification.id))}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const ReportsScreen = () => {
-    const totalBooks = books.reduce((sum, book) => sum + book.total, 0);
-    const totalLoans = loans.filter(loan => loan.status === 'active').length;
-    const overdueCount = overdueItems.length;
-    
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-blue-100 p-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="bg-white rounded-xl shadow-lg p-8">
-            <div className="flex items-center mb-8">
-              <button
-                onClick={() => setCurrentScreen('main')}
-                className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
-              >
-                <ArrowLeft className="w-6 h-6" />
-              </button>
-              <h2 className="text-3xl font-bold text-gray-800">Reports & Analytics</h2>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="bg-blue-50 p-6 rounded-xl">
-                <h3 className="text-lg font-semibold text-blue-800 mb-2">Collection Size</h3>
-                <p className="text-3xl font-bold text-blue-600">{totalBooks}</p>
-                <p className="text-sm text-blue-600">Total books</p>
-              </div>
-              
-              <div className="bg-green-50 p-6 rounded-xl">
-                <h3 className="text-lg font-semibold text-green-800 mb-2">Circulation</h3>
-                <p className="text-3xl font-bold text-green-600">{totalLoans}</p>
-                <p className="text-sm text-green-600">Active loans</p>
-              </div>
-              
-              <div className="bg-red-50 p-6 rounded-xl">
-                <h3 className="text-lg font-semibold text-red-800 mb-2">Overdue Items</h3>
-                <p className="text-3xl font-bold text-red-600">{overdueCount}</p>
-                <p className="text-sm text-red-600">Need attention</p>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div>
-                <h3 className="text-xl font-semibold mb-4">Most Borrowed Books</h3>
-                <div className="space-y-3">
-                  {books.map(book => {
-                    const loanCount = loans.filter(loan => loan.bookId === book.id).length;
-                    return loanCount > 0 ? (
-                      <div key={book.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <div className="font-medium">{book.title}</div>
-                          <div className="text-sm text-gray-600">{book.author}</div>
-                        </div>
-                        <div className="text-lg font-bold text-blue-600">{loanCount}</div>
-                      </div>
-                    ) : null;
-                  }).filter(Boolean).slice(0, 5)}
-                </div>
-              </div>
-              
-              <div>
-                <h3 className="text-xl font-semibold mb-4">Active Members</h3>
-                <div className="space-y-3">
-                  {members.map(member => {
-                    const loanCount = getMemberLoans(member.id).length;
-                    return loanCount > 0 ? (
-                      <div key={member.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <div className="font-medium">{member.name}</div>
-                          <div className="text-sm text-gray-600">{member.membershipType}</div>
-                        </div>
-                        <div className="text-lg font-bold text-purple-600">{loanCount}</div>
-                      </div>
-                    ) : null;
-                  }).filter(Boolean).slice(0, 5)}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const SettingsScreen = () => (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-slate-100 p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="flex items-center mb-8">
-            <button
-              onClick={() => setCurrentScreen('main')}
-              className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
-            >
-              <ArrowLeft className="w-6 h-6" />
-            </button>
-            <h2 className="text-3xl font-bold text-gray-800">Library Settings</h2>
-          </div>
-          
-          <div className="space-y-8">
-            <div>
-              <h3 className="text-xl font-semibold mb-4">Library Information</h3>
-              <div className="grid grid-cols-1 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Library Name
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.libraryName}
-                    onChange={(e) => setSettings({...settings, libraryName: e.target.value})}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
-            
-            <div>
-              <h3 className="text-xl font-semibold mb-4">Loan Policies</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Maximum loans per member
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.maxLoansPerMember}
-                    onChange={(e) => setSettings({...settings, maxLoansPerMember: parseInt(e.target.value)})}
-                    min="1"
-                    max="50"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Loan period (days)
-                  </label>
-                  <input
-                    type="number"
-                    value={settings.loanPeriodDays}
-                    onChange={(e) => setSettings({...settings, loanPeriodDays: parseInt(e.target.value)})}
-                    min="1"
-                    max="90"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
-            
-            <div>
-              <h3 className="text-xl font-semibold mb-4">Features</h3>
-              <div className="space-y-4">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={settings.allowReservations}
-                    onChange={(e) => setSettings({...settings, allowReservations: e.target.checked})}
-                    className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span>Allow book reservations</span>
-                </label>
-                
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={settings.autoReminders}
-                    onChange={(e) => setSettings({...settings, autoReminders: e.target.checked})}
-                    className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span>Send automatic overdue reminders</span>
-                </label>
-                
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={settings.enableFines}
-                    onChange={(e) => setSettings({...settings, enableFines: e.target.checked})}
-                    className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span>Enable overdue fines (not recommended for church libraries)</span>
-                </label>
-                
-                {settings.enableFines && (
-                  <div className="ml-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Fine per day ($)
-                    </label>
-                    <input
-                      type="number"
-                      value={settings.finePerDay}
-                      onChange={(e) => setSettings({...settings, finePerDay: parseFloat(e.target.value)})}
-                      min="0"
-                      step="0.01"
-                      className="w-32 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            <div>
-              <h3 className="text-xl font-semibold mb-4">Data Management</h3>
-              <div className="flex gap-4">
-                <button
-                  onClick={exportData}
-                  className="flex items-center gap-2 px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600"
-                >
-                  <Download className="w-5 h-5" />
-                  Export All Data
-                </button>
-                <label className="flex items-center gap-2 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 cursor-pointer">
-                  <Upload className="w-5 h-5" />
-                  Import Data
-                  <input type="file" accept=".json" onChange={importData} className="hidden" />
-                </label>
-              </div>
-              <p className="text-sm text-gray-600 mt-2">
-                Export creates a backup of all library data. Import allows you to restore from a previous backup.
-              </p>
-            </div>
-            
-            <div className="pt-6 border-t border-gray-200">
-              <button
-                onClick={() => {
-                  
-                    setSettings({
-                      libraryName: 'Bibliokeeper',
-                      maxLoansPerMember: 10,
-                      loanPeriodDays: 14,
-                      enableFines: false,
-                      finePerDay: 0.00,
-                      allowReservations: true,
-                      autoReminders: true
-                    });
-                    alert('Settings reset to defaults.');
-                  }
-                }}
-                className="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600"
-              >
-                Reset to Defaults
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderScreen = () => {
-    switch(currentScreen) {
-      case 'loan': return <LoanScreen />;
-      case 'return': return <ReturnScreen />;
-      case 'inventory': return <InventoryScreen />;
-      case 'members': return <MembersScreen />;
-      case 'notifications': return <NotificationsScreen />;
-      case 'reports': return <ReportsScreen />;
-      case 'settings': return <SettingsScreen />;
-      default: return <MainScreen />;
-    }
-  };
-
-  return renderScreen();
-};
-
-// Root Component handling Authentication
-const Root = () => {
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    if (typeof window !== "undefined" && !isPlaceholderConfig(firebaseConfig)) {
-      ensureFirebaseApp();
-    }
-  }, []);
-
-  const handleLogout = async () => {
-    try {
-      const app = ensureFirebaseApp();
-      if (app) {
-        const auth = getAuth(app);
-        await signOut(auth);
-      }
-    } catch (err) {
-      console.error("Logout error:", err);
-    }
-    setUser(null);
-  };
-
-  if (!user) {
-    return <LoginScreen onLogin={setUser} />;
-  }
-  return <LibraryApp user={user} onLogout={handleLogout} />;
-};
-
-export default Root;
+                      onClick={()
