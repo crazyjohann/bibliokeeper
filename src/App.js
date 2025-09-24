@@ -90,11 +90,8 @@ const LoginScreen = ({ onLogin }) => {
 const LibraryApp = ({ user, onLogout }) => {
   const [currentScreen, setCurrentScreen] = useState('main');
   const [books, setBooks] = useState([]);
-  
   const [members, setMembers] = useState([]);
-  
   const [loans, setLoans] = useState([]);
-  
   const [reservations, setReservations] = useState([]);
   const [overdueItems, setOverdueItems] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -197,14 +194,14 @@ const LibraryApp = ({ user, onLogout }) => {
     detectBarcode();
   };
 
-  const handleBarcodeDetected = (barcode) => {
+  const handleBarcodeDetected = async (barcode) => {
     if (scanningFor === 'book') {
       setScanInput(barcode);
     } else if (scanningFor === 'member') {
       setMemberScanInput(barcode);
     } else if (scanningFor === 'isbn') {
       // For adding new books, try to fetch book info from ISBN
-      fetchBookInfoFromISBN(barcode);
+      await fetchBookInfoFromISBN(barcode);
     }
     
     stopBarcodeScanning();
@@ -663,6 +660,23 @@ const LibraryApp = ({ user, onLogout }) => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-6">
                   <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Book ID / ISBN</label>
+                    <div className="flex">
+                      <input type="text" value={scanInput} onChange={handleScanInputChange} placeholder="Enter book ID or ISBN" className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
+                      <button onClick={() => startBarcodeScanning('book')} className="px-4 py-3 bg-green-500 text-white border border-green-500 rounded-r-lg hover:bg-green-600">
+                        <Camera className="w-5 h-5" />
+                      </button>
+                    </div>
+                    {scanInput && findBook(scanInput) && (
+                      <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="font-medium text-green-800">{findBook(scanInput).title}</div>
+                        <div className="text-sm text-green-600">by {findBook(scanInput).author}</div>
+                        <div className="text-sm text-green-600">Available: {findBook(scanInput).available}</div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Member ID</label>
                     <div className="flex">
                       <input type="text" value={memberScanInput} onChange={handleMemberScanInputChange} placeholder="Enter member ID" className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
@@ -1092,21 +1106,4 @@ const Root = () => {
   return <LibraryApp user={user} onLogout={handleLogout} />;
 };
 
-export default Root;Book ID / ISBN</label>
-                    <div className="flex">
-                      <input type="text" value={scanInput} onChange={handleScanInputChange} placeholder="Enter book ID or ISBN" className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
-                      <button onClick={() => startBarcodeScanning('book')} className="px-4 py-3 bg-green-500 text-white border border-green-500 rounded-r-lg hover:bg-green-600">
-                        <Camera className="w-5 h-5" />
-                      </button>
-                    </div>
-                    {scanInput && findBook(scanInput) && (
-                      <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="font-medium text-green-800">{findBook(scanInput).title}</div>
-                        <div className="text-sm text-green-600">by {findBook(scanInput).author}</div>
-                        <div className="text-sm text-green-600">Available: {findBook(scanInput).available}</div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+export default Root;
