@@ -133,17 +133,82 @@ const LibraryApp = ({ user, onLogout }) => {
   const startBarcodeScanning = (type) => {
     setScanningFor(type);
     setIsScanning(true);
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    
+    // Request camera access with back camera preference for better barcode scanning
+    navigator.mediaDevices.getUserMedia({ 
+      video: { 
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      } 
+    })
     .then(stream => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
+        
+        // Try to detect barcodes from video stream
+        if ('BarcodeDetector' in window) {
+          startBarcodeDetection();
+        }
       }
     })
     .catch(() => {
-      alert("Camera access denied. Please use manual input.");
+      alert("Camera access denied. Please use manual input or try again.");
       setIsScanning(false);
     });
+  };
+
+  const startBarcodeDetection = () => {
+    if (!('BarcodeDetector' in window)) {
+      return;
+    }
+
+    const barcodeDetector = new window.BarcodeDetector();
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    const detectBarcode = () => {
+      if (!videoRef.current || videoRef.current.readyState !== 4) {
+        setTimeout(detectBarcode, 100);
+        return;
+      }
+
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      context.drawImage(videoRef.current, 0, 0);
+
+      barcodeDetector.detect(canvas)
+        .then(barcodes => {
+          if (barcodes.length > 0 && isScanning) {
+            const barcode = barcodes[0].rawValue;
+            handleBarcodeDetected(barcode);
+          } else if (isScanning) {
+            setTimeout(detectBarcode, 100);
+          }
+        })
+        .catch(() => {
+          if (isScanning) {
+            setTimeout(detectBarcode, 100);
+          }
+        });
+    };
+
+    detectBarcode();
+  };
+
+  const handleBarcodeDetected = (barcode) => {
+    if (scanningFor === 'book') {
+      setScanInput(barcode);
+    } else if (scanningFor === 'member') {
+      setMemberScanInput(barcode);
+    } else if (scanningFor === 'isbn') {
+      // For adding new books, try to fetch book info from ISBN
+      fetchBookInfoFromISBN(barcode);
+    }
+    
+    stopBarcodeScanning();
+    alert(`Barcode detected: ${barcode}`);
   };
 
   const stopBarcodeScanning = () => {
@@ -155,17 +220,38 @@ const LibraryApp = ({ user, onLogout }) => {
   };
 
   const captureBarcode = () => {
-    const simulatedBarcodes = ['B001', 'B002', 'B003', 'B004', 'M001', 'M002', 'M003'];
-    const randomBarcode = simulatedBarcodes[Math.floor(Math.random() * simulatedBarcodes.length)];
-    
-    if (scanningFor === 'book') {
-      setScanInput(randomBarcode.startsWith('B') ? randomBarcode : 'B001');
-    } else if (scanningFor === 'member') {
-      setMemberScanInput(randomBarcode.startsWith('M') ? randomBarcode : 'M001');
+    // Fallback manual capture for browsers without BarcodeDetector
+    const userInput = prompt('Please enter the barcode/ISBN manually:');
+    if (userInput) {
+      handleBarcodeDetected(userInput);
+    } else {
+      stopBarcodeScanning();
     }
-    
-    stopBarcodeScanning();
-    alert(`Barcode detected: ${randomBarcode}`);
+  };
+    try {
+      // Try to fetch book info from Open Library API
+      const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+      const data = await response.json();
+      
+      const bookData = data[`ISBN:${isbn}`];
+      if (bookData) {
+        setNewBook({
+          title: bookData.title || '',
+          author: bookData.authors ? bookData.authors[0].name : '',
+          isbn: isbn,
+          category: bookData.subjects ? bookData.subjects[0].name : '',
+          quantity: 1
+        });
+        alert(`Book information found and filled automatically!`);
+      } else {
+        // Fallback: just set the ISBN and let user fill the rest
+        setNewBook(prev => ({ ...prev, isbn: isbn }));
+        alert(`ISBN detected: ${isbn}. Please fill in the remaining book details.`);
+      }
+    } catch (error) {
+      setNewBook(prev => ({ ...prev, isbn: isbn }));
+      alert(`ISBN detected: ${isbn}. Could not fetch book details automatically.`);
+    }
   };
 
   const calculateDueDate = (loanDate, days = settings.loanPeriodDays) => {
@@ -402,8 +488,20 @@ const LibraryApp = ({ user, onLogout }) => {
       <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
         <div className="bg-white rounded-xl p-6 m-4 max-w-md w-full">
           <div className="text-center mb-4">
-            <h3 className="text-xl font-bold">Scanning for {scanningFor}</h3>
-            <p className="text-gray-600">Point camera at barcode</p>
+            <h3 className="text-xl font-bold">
+              {scanningFor === 'isbn' ? 'Scanning Book ISBN' : `Scanning for ${scanningFor}`}
+            </h3>
+            <p className="text-gray-600">
+              {scanningFor === 'isbn' 
+                ? 'Point camera at book barcode to auto-fill details'
+                : 'Point camera at barcode'
+              }
+            </p>
+            {'BarcodeDetector' in window ? (
+              <p className="text-sm text-green-600 mt-2">Real-time barcode detection active</p>
+            ) : (
+              <p className="text-sm text-orange-600 mt-2">Manual capture mode - position barcode and click capture</p>
+            )}
           </div>
           
           <div className="relative mb-4">
@@ -415,16 +513,25 @@ const LibraryApp = ({ user, onLogout }) => {
             />
             <div className="absolute inset-0 border-2 border-red-500 rounded-lg pointer-events-none">
               <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-1 bg-red-500"></div>
+              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1 h-32 bg-red-500"></div>
             </div>
           </div>
           
           <div className="flex gap-3">
-            <button onClick={captureBarcode} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-semibold">
-              Capture
-            </button>
-            <button onClick={stopBarcodeScanning} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold">
-              Cancel
-            </button>
+            {'BarcodeDetector' in window ? (
+              <button onClick={stopBarcodeScanning} className="w-full bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold">
+                Cancel
+              </button>
+            ) : (
+              <>
+                <button onClick={captureBarcode} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-semibold">
+                  Capture
+                </button>
+                <button onClick={stopBarcodeScanning} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold">
+                  Cancel
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -714,7 +821,17 @@ const LibraryApp = ({ user, onLogout }) => {
                   <div className="space-y-4">
                     <input type="text" value={newBook.title} onChange={(e) => setNewBook({...newBook, title: e.target.value})} placeholder="Book Title *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
                     <input type="text" value={newBook.author} onChange={(e) => setNewBook({...newBook, author: e.target.value})} placeholder="Author *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                    <input type="text" value={newBook.isbn} onChange={(e) => setNewBook({...newBook, isbn: e.target.value})} placeholder="ISBN *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                    
+                    <div>
+                      <div className="flex">
+                        <input type="text" value={newBook.isbn} onChange={(e) => setNewBook({...newBook, isbn: e.target.value})} placeholder="ISBN *" className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                        <button onClick={() => startBarcodeScanning('isbn')} className="px-4 py-3 bg-orange-500 text-white border border-orange-500 rounded-r-lg hover:bg-orange-600" title="Scan ISBN barcode">
+                          <Camera className="w-5 h-5" />
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">Scan ISBN barcode to auto-fill book details</p>
+                    </div>
+                    
                     <select value={newBook.category} onChange={(e) => setNewBook({...newBook, category: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
                       <option value="">Select Category</option>
                       <option value="Fiction">Fiction</option>
