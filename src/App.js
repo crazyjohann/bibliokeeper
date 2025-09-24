@@ -5,7 +5,7 @@ import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Sear
 
 // Firebase config
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyCeJLBYthkoyaMckgTT0vnoZ_slIXYrvC4", 
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AlzaSyCeJLBYthkoyaMckgTT0vnoZ_slXYrvC4", 
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "bibliokeeper.firebaseapp.com",
   projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "bibliokeeper",
   storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "bibliokeeper.appspot.com",
@@ -89,24 +89,11 @@ const LoginScreen = ({ onLogin }) => {
 // Main Library App
 const LibraryApp = ({ user, onLogout }) => {
   const [currentScreen, setCurrentScreen] = useState('main');
-  const [books, setBooks] = useState([
-    { id: 'B001', title: 'The Great Gatsby', author: 'F. Scott Fitzgerald', isbn: '978-0-7432-7356-5', category: 'Fiction', available: 2, total: 3 },
-    { id: 'B002', title: 'To Kill a Mockingbird', author: 'Harper Lee', isbn: '978-0-06-112008-4', category: 'Fiction', available: 1, total: 2 },
-    { id: 'B003', title: '1984', author: 'George Orwell', isbn: '978-0-452-28423-4', category: 'Dystopian', available: 3, total: 4 },
-    { id: 'B004', title: 'The Catcher in the Rye', author: 'J.D. Salinger', isbn: '978-0-316-76948-0', category: 'Fiction', available: 1, total: 1 }
-  ]);
+  const [books, setBooks] = useState([]);
   
-  const [members, setMembers] = useState([
-    { id: 'M001', name: 'John Doe', email: 'john@email.com', phone: '555-0123', joinDate: '2024-01-15', membershipType: 'Standard' },
-    { id: 'M002', name: 'Jane Smith', email: 'jane@email.com', phone: '555-0456', joinDate: '2024-02-20', membershipType: 'Premium' },
-    { id: 'M003', name: 'Bob Johnson', email: 'bob@email.com', phone: '555-0789', joinDate: '2024-03-10', membershipType: 'Standard' }
-  ]);
+  const [members, setMembers] = useState([]);
   
-  const [loans, setLoans] = useState([
-    { id: 'L001', bookId: 'B001', memberId: 'M001', loanDate: '2024-09-01', dueDate: '2024-09-15', status: 'active' },
-    { id: 'L002', bookId: 'B002', memberId: 'M002', loanDate: '2024-08-20', dueDate: '2024-09-03', status: 'active' },
-    { id: 'L003', bookId: 'B003', memberId: 'M001', loanDate: '2024-09-10', dueDate: '2024-09-24', status: 'active' }
-  ]);
+  const [loans, setLoans] = useState([]);
   
   const [reservations, setReservations] = useState([]);
   const [overdueItems, setOverdueItems] = useState([]);
