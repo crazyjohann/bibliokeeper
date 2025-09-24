@@ -228,6 +228,8 @@ const LibraryApp = ({ user, onLogout }) => {
       stopBarcodeScanning();
     }
   };
+
+  const fetchBookInfoFromISBN = async (isbn) => {
     try {
       // Try to fetch book info from Open Library API
       const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
@@ -661,23 +663,6 @@ const LibraryApp = ({ user, onLogout }) => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Book ID / ISBN</label>
-                    <div className="flex">
-                      <input type="text" value={scanInput} onChange={handleScanInputChange} placeholder="Enter book ID or ISBN" className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
-                      <button onClick={() => startBarcodeScanning('book')} className="px-4 py-3 bg-green-500 text-white border border-green-500 rounded-r-lg hover:bg-green-600">
-                        <Camera className="w-5 h-5" />
-                      </button>
-                    </div>
-                    {scanInput && findBook(scanInput) && (
-                      <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="font-medium text-green-800">{findBook(scanInput).title}</div>
-                        <div className="text-sm text-green-600">by {findBook(scanInput).author}</div>
-                        <div className="text-sm text-green-600">Available: {findBook(scanInput).available}</div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Member ID</label>
                     <div className="flex">
                       <input type="text" value={memberScanInput} onChange={handleMemberScanInputChange} placeholder="Enter member ID" className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
@@ -884,6 +869,7 @@ const LibraryApp = ({ user, onLogout }) => {
               </div>
             </div>
           </div>
+          <BarcodeScannerModal />
         </div>
       );
       
@@ -963,6 +949,7 @@ const LibraryApp = ({ user, onLogout }) => {
               </div>
             </div>
           </div>
+          <BarcodeScannerModal />
         </div>
       );
       
@@ -1105,4 +1092,21 @@ const Root = () => {
   return <LibraryApp user={user} onLogout={handleLogout} />;
 };
 
-export default Root;
+export default Root;Book ID / ISBN</label>
+                    <div className="flex">
+                      <input type="text" value={scanInput} onChange={handleScanInputChange} placeholder="Enter book ID or ISBN" className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
+                      <button onClick={() => startBarcodeScanning('book')} className="px-4 py-3 bg-green-500 text-white border border-green-500 rounded-r-lg hover:bg-green-600">
+                        <Camera className="w-5 h-5" />
+                      </button>
+                    </div>
+                    {scanInput && findBook(scanInput) && (
+                      <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="font-medium text-green-800">{findBook(scanInput).title}</div>
+                        <div className="text-sm text-green-600">by {findBook(scanInput).author}</div>
+                        <div className="text-sm text-green-600">Available: {findBook(scanInput).available}</div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
