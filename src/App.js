@@ -5,7 +5,7 @@ import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Sear
 
 // Firebase config
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AlzaSyCeJLBYthkoyaMckgTT0vnoZ_slXYrvC4", 
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyCeJLBYthkoyaMckgTT0vnoZ_slIXYrvC4", 
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "bibliokeeper.firebaseapp.com",
   projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "bibliokeeper",
   storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "bibliokeeper.appspot.com",
