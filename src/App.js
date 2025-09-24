@@ -197,6 +197,29 @@ const LibraryApp = ({ user, onLogout }) => {
   const handleBarcodeDetected = async (barcode) => {
     if (scanningFor === 'book') {
       setScanInput(barcode);
+      // Check if it's an ISBN and try to find/create the book entry automatically
+      const existingBook = findBook(barcode);
+      if (!existingBook && barcode.length >= 10) {
+        // This might be an ISBN for a book not in our system
+        try {
+          const bookInfo = await fetchBookInfoFromAPI(barcode);
+          if (bookInfo) {
+            const newBook = {
+              id: generateId('B'),
+              title: bookInfo.title,
+              author: bookInfo.author,
+              isbn: barcode,
+              category: bookInfo.category || 'General',
+              available: 1,
+              total: 1
+            };
+            setBooks(prev => [...prev, newBook]);
+            alert(`New book "${bookInfo.title}" by ${bookInfo.author} added to library automatically!`);
+          }
+        } catch (error) {
+          console.error('Error auto-adding book:', error);
+        }
+      }
     } else if (scanningFor === 'member') {
       setMemberScanInput(barcode);
     } else if (scanningFor === 'isbn') {
@@ -223,6 +246,26 @@ const LibraryApp = ({ user, onLogout }) => {
       handleBarcodeDetected(userInput);
     } else {
       stopBarcodeScanning();
+    }
+  };
+
+  const fetchBookInfoFromAPI = async (isbn) => {
+    try {
+      const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+      const data = await response.json();
+      
+      const bookData = data[`ISBN:${isbn}`];
+      if (bookData) {
+        return {
+          title: bookData.title || 'Unknown Title',
+          author: bookData.authors ? bookData.authors[0].name : 'Unknown Author',
+          category: bookData.subjects ? bookData.subjects[0].name : 'General'
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching book info:', error);
+      return null;
     }
   };
 
