@@ -340,7 +340,7 @@ const LibraryApp = ({ user, onLogout }) => {
     }
   };
 
-  // Improved camera scanning with better error handling
+  // Enhanced barcode scanning with multiple detection methods
   const startBarcodeScanning = async (type) => {
     setScanningFor(type);
     setIsScanning(true);
@@ -370,8 +370,14 @@ const LibraryApp = ({ user, onLogout }) => {
         try {
           await videoRef.current.play();
           
-          // Start manual scanning since BarcodeDetector has limited support
-          startManualScanning();
+          // Try BarcodeDetector first, fallback to manual pattern detection
+          if ('BarcodeDetector' in window) {
+            console.log('Using BarcodeDetector API');
+            startBarcodeDetection();
+          } else {
+            console.log('BarcodeDetector not available, using pattern detection');
+            startPatternDetection();
+          }
         } catch (playError) {
           console.error('Video play error:', playError);
           setCameraError("Could not start video playback. Please try again.");
@@ -399,11 +405,115 @@ const LibraryApp = ({ user, onLogout }) => {
     }
   };
 
-  // Manual scanning approach since BarcodeDetector has limited support
-  const startManualScanning = () => {
-    // For now, we'll rely on manual input
-    // In a real implementation, you could integrate a library like QuaggaJS or ZXing
-    console.log('Manual scanning mode - user will need to input barcode manually');
+  // BarcodeDetector API implementation
+  const startBarcodeDetection = () => {
+    try {
+      const barcodeDetector = new window.BarcodeDetector({
+        formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e']
+      });
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+
+      const detectBarcode = () => {
+        if (!videoRef.current || videoRef.current.readyState !== 4 || !isScanningRef.current) {
+          if (isScanningRef.current) {
+            setTimeout(detectBarcode, 100);
+          }
+          return;
+        }
+
+        canvas.width = videoRef.current.videoWidth;
+        canvas.height = videoRef.current.videoHeight;
+        context.drawImage(videoRef.current, 0, 0);
+
+        barcodeDetector.detect(canvas)
+          .then(barcodes => {
+            if (barcodes.length > 0 && isScanningRef.current) {
+              const barcode = barcodes[0].rawValue;
+              console.log('Barcode detected:', barcode);
+              handleBarcodeDetected(barcode);
+            } else if (isScanningRef.current) {
+              requestAnimationFrame(detectBarcode);
+            }
+          })
+          .catch((err) => {
+            console.error('Barcode detection error:', err);
+            if (isScanningRef.current) {
+              setTimeout(detectBarcode, 500);
+            }
+          });
+      };
+
+      detectBarcode();
+    } catch (err) {
+      console.error('BarcodeDetector initialization error:', err);
+      // Fallback to pattern detection
+      startPatternDetection();
+    }
+  };
+
+  // Fallback pattern detection for browsers without BarcodeDetector
+  const startPatternDetection = () => {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    
+    const detectPattern = () => {
+      if (!videoRef.current || videoRef.current.readyState !== 4 || !isScanningRef.current) {
+        if (isScanningRef.current) {
+          setTimeout(detectPattern, 100);
+        }
+        return;
+      }
+
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      context.drawImage(videoRef.current, 0, 0);
+      
+      // Simple pattern detection - look for high contrast vertical lines
+      // This is a basic implementation that might detect some barcodes
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const detected = analyzeImageForBarcode(imageData);
+      
+      if (detected && isScanningRef.current) {
+        // Since we can't actually read the barcode without a proper library,
+        // we'll prompt for manual entry when we detect a pattern
+        console.log('Barcode pattern detected, prompting for manual entry');
+        captureBarcode();
+      } else if (isScanningRef.current) {
+        setTimeout(detectPattern, 200);
+      }
+    };
+
+    detectPattern();
+  };
+
+  // Basic barcode pattern analysis (looks for vertical line patterns)
+  const analyzeImageForBarcode = (imageData) => {
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
+    
+    // Sample the middle row of the image
+    const middleRow = Math.floor(height / 2);
+    const rowStart = middleRow * width * 4;
+    
+    let transitions = 0;
+    let lastBrightness = null;
+    
+    // Count brightness transitions across the middle row
+    for (let x = 0; x < width; x += 4) { // Sample every 4th pixel for performance
+      const pixelIndex = rowStart + (x * 4);
+      const brightness = (data[pixelIndex] + data[pixelIndex + 1] + data[pixelIndex + 2]) / 3;
+      const isDark = brightness < 128;
+      
+      if (lastBrightness !== null && lastBrightness !== isDark) {
+        transitions++;
+      }
+      lastBrightness = isDark;
+    }
+    
+    // If we detect many transitions, it might be a barcode
+    return transitions > 20 && transitions < width / 4;
   };
 
   const handleBarcodeDetected = async (barcode) => {
