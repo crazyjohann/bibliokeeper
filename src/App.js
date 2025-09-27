@@ -520,12 +520,19 @@ const LibraryApp = ({ user, onLogout }) => {
     if (!barcode || !barcode.trim()) return;
     
     const cleanBarcode = barcode.trim();
+    console.log('Processing detected barcode:', cleanBarcode);
+    
+    // Stop scanning immediately
+    stopBarcodeScanning();
     
     if (scanningFor === 'book') {
       setScanInput(cleanBarcode);
+      
+      // Check if book already exists
       const existingBook = findBook(cleanBarcode);
       if (!existingBook && cleanBarcode.length >= 10) {
         try {
+          console.log('Fetching book info for detected barcode...');
           const bookInfo = await fetchBookInfoFromAPI(cleanBarcode);
           if (bookInfo) {
             const newBookEntry = {
@@ -539,19 +546,46 @@ const LibraryApp = ({ user, onLogout }) => {
             };
             setBooks(prev => [...prev, newBookEntry]);
             alert(`New book "${bookInfo.title}" by ${bookInfo.author} added to library automatically!`);
+          } else {
+            alert(`Barcode detected: ${cleanBarcode}\nCould not fetch book details. Please add manually.`);
           }
         } catch (error) {
           console.error('Error auto-adding book:', error);
+          alert(`Barcode detected: ${cleanBarcode}\nError fetching book details. Please add manually.`);
         }
+      } else if (existingBook) {
+        alert(`Book "${existingBook.title}" found in library!`);
+      } else {
+        alert(`Barcode detected: ${cleanBarcode}\nPlease verify if this is a valid ISBN.`);
       }
     } else if (scanningFor === 'member') {
       setMemberScanInput(cleanBarcode);
+      alert(`Member barcode detected: ${cleanBarcode}`);
     } else if (scanningFor === 'isbn') {
-      await fetchBookInfoFromISBN(cleanBarcode);
+      // This is for the Add New Book form
+      console.log('Auto-filling book form with ISBN:', cleanBarcode);
+      
+      try {
+        const bookInfo = await fetchBookInfoFromAPI(cleanBarcode);
+        if (bookInfo) {
+          setNewBook({
+            title: bookInfo.title,
+            author: bookInfo.author,
+            isbn: cleanBarcode,
+            category: bookInfo.category,
+            quantity: 1
+          });
+          alert(`Book information found and auto-filled!\nTitle: ${bookInfo.title}\nAuthor: ${bookInfo.author}\nCategory: ${bookInfo.category}`);
+        } else {
+          setNewBook(prev => ({ ...prev, isbn: cleanBarcode }));
+          alert(`ISBN detected: ${cleanBarcode}\nCould not fetch book details automatically. Please fill in the remaining fields.`);
+        }
+      } catch (error) {
+        console.error('Error fetching book info:', error);
+        setNewBook(prev => ({ ...prev, isbn: cleanBarcode }));
+        alert(`ISBN detected: ${cleanBarcode}\nError fetching book details. Please fill in the remaining fields.`);
+      }
     }
-    
-    stopBarcodeScanning();
-    alert(`Barcode detected: ${cleanBarcode}`);
   };
 
   const stopBarcodeScanning = () => {
