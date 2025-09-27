@@ -1,22 +1,61 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell, AlertCircle } from 'lucide-react';
 
-// Mock Firebase functions for demonstration
-const mockFirebase = {
-  initializeApp: () => ({ name: 'mock' }),
-  getApps: () => [],
-  getAuth: () => ({
-    currentUser: null,
-    onAuthStateChanged: (callback) => {
-      // Auto-login for demo
-      setTimeout(() => callback({ email: 'demo@library.com', uid: 'demo-user' }), 100);
-      return () => {};
-    },
-    signInWithPopup: () => Promise.resolve({ user: { email: 'demo@library.com', uid: 'demo-user' } }),
-    signOut: () => Promise.resolve()
-  }),
-  GoogleAuthProvider: function() { return {}; }
+const firebaseConfig = {
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyCeJLBYthkoyaMckgTT0vnoZ_slXYrvC4",
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "bibliokeeper.firebaseapp.com",
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "bibliokeeper",
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "bibliokeeper.appspot.com",
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "771697995545",
+  appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:771697995545:web:c23b431eb9321dbd49df88"
 };
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('Error caught by boundary:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-red-50">
+          <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-md">
+            <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold mb-2">Something went wrong</h2>
+            <p className="text-gray-600 mb-4">The application encountered an error. Please refresh the page to try again.</p>
+            <button onClick={() => window.location.reload()} className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg">
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function isPlaceholderConfig(cfg) {
+  return Object.values(cfg).some((v) => typeof v === "string" && (v.includes("YOUR_") || v === ""));
+}
+
+function ensureFirebaseApp() {
+  if (typeof window === "undefined") return null;
+  if (getApps().length) return getApps()[0];
+  try {
+    return initializeApp(firebaseConfig);
+  } catch (err) {
+    console.error("Firebase initialization error:", err);
+    return null;
+  }
+}
 
 const LoadingScreen = () => (
   <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -29,16 +68,37 @@ const LoadingScreen = () => (
 
 const LoginScreen = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleLogin = async () => {
     setLoading(true);
+    setError(null);
+    if (isPlaceholderConfig(firebaseConfig)) {
+      setError("Firebase configuration is incomplete. Please check your environment variables.");
+      setLoading(false);
+      return;
+    }
+    const app = ensureFirebaseApp();
+    if (!app) {
+      setError("Unable to initialize Firebase. Please check your configuration.");
+      setLoading(false);
+      return;
+    }
     try {
-      // Mock login for demo
-      setTimeout(() => {
-        onLogin({ email: 'demo@library.com', uid: 'demo-user' });
-        setLoading(false);
-      }, 1000);
+      const auth = getAuth(app);
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      onLogin(result.user);
     } catch (err) {
+      console.error("Authentication error:", err);
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError("Sign-in was cancelled. Please try again.");
+      } else if (err.code === 'auth/network-request-failed') {
+        setError("Network error. Please check your internet connection.");
+      } else {
+        setError("Sign-in failed. Please try again or contact support.");
+      }
+    } finally {
       setLoading(false);
     }
   };
@@ -48,14 +108,19 @@ const LoginScreen = ({ onLogin }) => {
       <div className="bg-white p-8 rounded-2xl shadow-xl text-center w-96">
         <h1 className="text-3xl font-bold mb-4">📚 Bibliokeeper</h1>
         <p className="text-sm text-gray-600 mb-4">Church Library Management System</p>
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+            {error}
+          </div>
+        )}
         <button
           onClick={handleLogin}
           disabled={loading}
           className="bg-red-500 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-semibold w-full transition-colors"
         >
-          {loading ? "Signing in..." : "Demo Login"}
+          {loading ? "Signing in..." : "Sign in with Google"}
         </button>
-        <p className="text-xs text-gray-500 mt-4">Demo mode - no authentication required</p>
+        <p className="text-xs text-gray-500 mt-4">Authorized librarians only</p>
       </div>
     </div>
   );
@@ -63,47 +128,30 @@ const LoginScreen = ({ onLogin }) => {
 
 const LibraryApp = ({ user, onLogout }) => {
   const [currentScreen, setCurrentScreen] = useState('main');
-  const [books, setBooks] = useState([
-    {
-      id: 'B001',
-      title: 'The Purpose Driven Life',
-      author: 'Rick Warren',
-      isbn: '9780310205715',
-      category: 'Christian Living',
-      available: 2,
-      total: 3
-    },
-    {
-      id: 'B002', 
-      title: 'Mere Christianity',
-      author: 'C.S. Lewis',
-      isbn: '9780060652926',
-      category: 'Theology',
-      available: 1,
-      total: 2
+  const [books, setBooks] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bibliokeeper_books');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
     }
-  ]);
-  
-  const [members, setMembers] = useState([
-    {
-      id: 'M001',
-      name: 'John Smith',
-      email: 'john@email.com',
-      phone: '555-0123',
-      joinDate: '2024-01-15',
-      membershipType: 'Standard'
-    },
-    {
-      id: 'M002',
-      name: 'Sarah Johnson', 
-      email: 'sarah@email.com',
-      phone: '555-0124',
-      joinDate: '2024-02-10',
-      membershipType: 'Staff'
+  });
+  const [members, setMembers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bibliokeeper_members');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
     }
-  ]);
-
-  const [loans, setLoans] = useState([]);
+  });
+  const [loans, setLoans] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bibliokeeper_loans');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [reservations, setReservations] = useState([]);
   const [overdueItems, setOverdueItems] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -114,22 +162,69 @@ const LibraryApp = ({ user, onLogout }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [scanningFor, setScanningFor] = useState(null);
+  const [apiError, setApiError] = useState(null);
   const [cameraError, setCameraError] = useState(null);
-  
   const videoRef = useRef(null);
   const scanTimeoutRef = useRef(null);
   const isScanningRef = useRef(false);
   const streamRef = useRef(null);
   
-  const [settings, setSettings] = useState({
-    libraryName: 'Bibliokeeper',
-    maxLoansPerMember: 10,
-    loanPeriodDays: 14,
-    enableFines: false,
-    finePerDay: 0.00,
-    allowReservations: true,
-    autoReminders: true
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bibliokeeper_settings');
+      return saved ? JSON.parse(saved) : {
+        libraryName: 'Bibliokeeper',
+        maxLoansPerMember: 10,
+        loanPeriodDays: 14,
+        enableFines: false,
+        finePerDay: 0.00,
+        allowReservations: true,
+        autoReminders: true
+      };
+    } catch {
+      return {
+        libraryName: 'Bibliokeeper',
+        maxLoansPerMember: 10,
+        loanPeriodDays: 14,
+        enableFines: false,
+        finePerDay: 0.00,
+        allowReservations: true,
+        autoReminders: true
+      };
+    }
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bibliokeeper_books', JSON.stringify(books));
+    } catch (e) {
+      console.error('Failed to save books to localStorage:', e);
+    }
+  }, [books]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bibliokeeper_members', JSON.stringify(members));
+    } catch (e) {
+      console.error('Failed to save members to localStorage:', e);
+    }
+  }, [members]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bibliokeeper_loans', JSON.stringify(loans));
+    } catch (e) {
+      console.error('Failed to save loans to localStorage:', e);
+    }
+  }, [loans]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bibliokeeper_settings', JSON.stringify(settings));
+    } catch (e) {
+      console.error('Failed to save settings to localStorage:', e);
+    }
+  }, [settings]);
 
   const generateId = (prefix) => {
     const timestamp = Date.now().toString(36);
@@ -151,41 +246,101 @@ const LibraryApp = ({ user, onLogout }) => {
   const handleMemberScanInputChange = useCallback((e) => setMemberScanInput(e.target.value), []);
   const handleSearchQueryChange = useCallback((e) => setSearchQuery(e.target.value), []);
 
-  // Simple Open Library API function
+  // Open Library API function - using Books API with jscmd=data
   const fetchBookInfoFromAPI = async (isbn) => {
+    setApiError(null);
+    
+    // Clean ISBN (remove hyphens, spaces)
     const cleanISBN = isbn.replace(/[-\s]/g, '');
     
     try {
-      // Use CORS proxy to access Open Library API
-      const proxyUrl = 'https://api.allorigins.win/raw?url=';
-      const targetUrl = `https://openlibrary.org/api/books?bibkeys=ISBN:${cleanISBN}&jscmd=data&format=json`;
-      const response = await fetch(proxyUrl + encodeURIComponent(targetUrl));
+      console.log(`Fetching book info from Open Library for ISBN: ${cleanISBN}`);
       
-      if (!response.ok) throw new Error('API request failed');
+      // Use Open Library Books API with jscmd=data for detailed information
+      const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${cleanISBN}&jscmd=data&format=json`);
+      
+      if (!response.ok) {
+        throw new Error(`API responded with status: ${response.status}`);
+      }
       
       const data = await response.json();
+      console.log('Open Library API response:', data);
+      
       const bookData = data[`ISBN:${cleanISBN}`];
       
       if (bookData) {
-        const title = bookData.title || '';
+        // Extract book information from Open Library data format
+        const title = bookData.title || 'Unknown Title';
         const author = bookData.authors && bookData.authors.length > 0 
           ? bookData.authors[0].name 
-          : '';
+          : 'Unknown Author';
         const category = bookData.subjects && bookData.subjects.length > 0 
           ? bookData.subjects[0].name 
           : 'General';
         
-        return { title, author, category };
+        const bookInfo = { title, author, category };
+        console.log('Successfully parsed book info from Open Library:', bookInfo);
+        return bookInfo;
+      } else {
+        // Try the simpler ISBN endpoint as fallback
+        console.log('No data from Books API, trying ISBN endpoint...');
+        const isbnResponse = await fetch(`https://openlibrary.org/isbn/${cleanISBN}.json`);
+        
+        if (!isbnResponse.ok) {
+          throw new Error(`ISBN endpoint responded with status: ${isbnResponse.status}`);
+        }
+        
+        const isbnData = await isbnResponse.json();
+        console.log('ISBN endpoint response:', isbnData);
+        
+        if (isbnData) {
+          const title = isbnData.title || 'Unknown Title';
+          const author = isbnData.authors && isbnData.authors.length > 0
+            ? isbnData.authors[0].name
+            : (isbnData.by_statement || 'Unknown Author');
+          const category = isbnData.subjects && isbnData.subjects.length > 0
+            ? isbnData.subjects[0]
+            : 'General';
+          
+          const bookInfo = { title, author, category };
+          console.log('Successfully parsed book info from ISBN endpoint:', bookInfo);
+          return bookInfo;
+        }
       }
       
-      return null;
+      throw new Error('No book data found');
+      
     } catch (error) {
-      console.error('API error:', error);
+      console.error('Error with Open Library API:', error);
+      setApiError(`Could not find book information for ISBN: ${cleanISBN}. Please enter details manually.`);
       return null;
     }
   };
 
-  // Enhanced barcode scanning simulation
+  const fetchBookInfoFromISBN = async (isbn) => {
+    try {
+      const bookInfo = await fetchBookInfoFromAPI(isbn);
+      if (bookInfo) {
+        setNewBook({
+          title: bookInfo.title,
+          author: bookInfo.author,
+          isbn: isbn,
+          category: bookInfo.category,
+          quantity: 1
+        });
+        alert(`Book information found and filled automatically!\nTitle: ${bookInfo.title}\nAuthor: ${bookInfo.author}`);
+      } else {
+        setNewBook(prev => ({ ...prev, isbn: isbn }));
+        alert(`ISBN detected: ${isbn}\nCould not fetch book details automatically. Please fill in the remaining fields.`);
+      }
+    } catch (error) {
+      console.error('Error fetching book info:', error);
+      setNewBook(prev => ({ ...prev, isbn: isbn }));
+      alert(`ISBN detected: ${isbn}\nError fetching book details. Please fill in the remaining fields.`);
+    }
+  };
+
+  // Improved camera scanning with better error handling
   const startBarcodeScanning = async (type) => {
     setScanningFor(type);
     setIsScanning(true);
@@ -199,10 +354,10 @@ const LibraryApp = ({ user, onLogout }) => {
     }, 30000);
     
     try {
-      // Request camera permissions
+      // Request camera permissions with better constraints
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
-          facingMode: { ideal: 'environment' },
+          facingMode: { ideal: 'environment' }, // Prefer back camera
           width: { ideal: 1280, min: 640 },
           height: { ideal: 720, min: 480 }
         } 
@@ -214,7 +369,9 @@ const LibraryApp = ({ user, onLogout }) => {
         
         try {
           await videoRef.current.play();
-          console.log('Camera ready for scanning');
+          
+          // Start manual scanning since BarcodeDetector has limited support
+          startManualScanning();
         } catch (playError) {
           console.error('Video play error:', playError);
           setCameraError("Could not start video playback. Please try again.");
@@ -225,56 +382,66 @@ const LibraryApp = ({ user, onLogout }) => {
       }
     } catch (err) {
       console.error('Camera error:', err);
-      let errorMessage = "Camera access denied or not available. Using manual entry.";
+      let errorMessage = "Camera access denied or not available.";
       
       if (err.name === 'NotAllowedError') {
-        errorMessage = "Camera access denied. Please allow camera permissions or use manual entry.";
+        errorMessage = "Camera access denied. Please allow camera permissions and try again.";
       } else if (err.name === 'NotFoundError') {
-        errorMessage = "No camera found. Please connect a camera or use manual entry.";
+        errorMessage = "No camera found. Please connect a camera and try again.";
       } else if (err.name === 'NotReadableError') {
-        errorMessage = "Camera is already in use by another application. Using manual entry.";
+        errorMessage = "Camera is already in use by another application.";
       }
       
       setCameraError(errorMessage);
-      // Don't stop scanning, allow manual entry
+      setIsScanning(false);
+      isScanningRef.current = false;
+      setScanningFor(null);
     }
+  };
+
+  // Manual scanning approach since BarcodeDetector has limited support
+  const startManualScanning = () => {
+    // For now, we'll rely on manual input
+    // In a real implementation, you could integrate a library like QuaggaJS or ZXing
+    console.log('Manual scanning mode - user will need to input barcode manually');
   };
 
   const handleBarcodeDetected = async (barcode) => {
     if (!barcode || !barcode.trim()) return;
     
     const cleanBarcode = barcode.trim();
-    stopBarcodeScanning();
     
-    if (scanningFor === 'isbn') {
-      // Auto-fill book form with scanned ISBN
-      setNewBook(prev => ({ ...prev, isbn: cleanBarcode }));
-      
-      // Fetch book info and auto-fill form
-      try {
-        const bookInfo = await fetchBookInfoFromAPI(cleanBarcode);
-        if (bookInfo && bookInfo.title && bookInfo.author) {
-          setNewBook({
-            title: bookInfo.title,
-            author: bookInfo.author,
-            isbn: cleanBarcode,
-            category: bookInfo.category || 'General',
-            quantity: 1
-          });
-        }
-      } catch (error) {
-        // If API fails, just keep the ISBN and let user fill manually
-        console.log('Could not fetch book details');
-      }
-    } else if (scanningFor === 'book') {
+    if (scanningFor === 'book') {
       setScanInput(cleanBarcode);
       const existingBook = findBook(cleanBarcode);
-      if (existingBook) {
-        alert(`Found: "${existingBook.title}"`);
+      if (!existingBook && cleanBarcode.length >= 10) {
+        try {
+          const bookInfo = await fetchBookInfoFromAPI(cleanBarcode);
+          if (bookInfo) {
+            const newBookEntry = {
+              id: generateId('B'),
+              title: bookInfo.title,
+              author: bookInfo.author,
+              isbn: cleanBarcode,
+              category: bookInfo.category || 'General',
+              available: 1,
+              total: 1
+            };
+            setBooks(prev => [...prev, newBookEntry]);
+            alert(`New book "${bookInfo.title}" by ${bookInfo.author} added to library automatically!`);
+          }
+        } catch (error) {
+          console.error('Error auto-adding book:', error);
+        }
       }
     } else if (scanningFor === 'member') {
       setMemberScanInput(cleanBarcode);
+    } else if (scanningFor === 'isbn') {
+      await fetchBookInfoFromISBN(cleanBarcode);
     }
+    
+    stopBarcodeScanning();
+    alert(`Barcode detected: ${cleanBarcode}`);
   };
 
   const stopBarcodeScanning = () => {
@@ -625,13 +792,17 @@ const LibraryApp = ({ user, onLogout }) => {
               {scanningFor === 'isbn' ? 'Scanning Book ISBN' : `Scanning for ${scanningFor}`}
             </h3>
             <p className="text-gray-600">
-              Position barcode in view of camera or click "Manual Entry" to type it in
+              {scanningFor === 'isbn' 
+                ? 'Position barcode clearly in view and click "Manual Entry" to input the code'
+                : 'Position barcode clearly in view and click "Manual Entry" to input the code'
+              }
             </p>
+            <p className="text-sm text-orange-600 mt-2">Camera ready - click "Manual Entry" to input barcode</p>
           </div>
           
           {cameraError && (
-            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-yellow-700 text-sm">{cameraError}</p>
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700 text-sm">{cameraError}</p>
             </div>
           )}
           
@@ -650,17 +821,10 @@ const LibraryApp = ({ user, onLogout }) => {
           </div>
           
           <div className="flex gap-3">
-            <button 
-              onClick={captureBarcode} 
-              className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-semibold transition-colors"
-              disabled={fetchingBook}
-            >
+            <button onClick={captureBarcode} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-semibold transition-colors">
               Manual Entry
             </button>
-            <button 
-              onClick={stopBarcodeScanning} 
-              className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold transition-colors"
-            >
+            <button onClick={stopBarcodeScanning} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold transition-colors">
               Cancel
             </button>
           </div>
@@ -672,6 +836,13 @@ const LibraryApp = ({ user, onLogout }) => {
   const MainScreen = () => (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
       <div className="max-w-6xl mx-auto">
+        {apiError && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-6 text-sm">
+            <AlertCircle className="inline w-4 h-4 mr-2" />
+            {apiError}
+          </div>
+        )}
+        
         <div className="flex justify-between items-center mb-12">
           <div className="text-center flex-1">
             <h1 className="text-4xl font-bold text-gray-800 mb-4">📚 {settings.libraryName}</h1>
@@ -936,6 +1107,13 @@ const LibraryApp = ({ user, onLogout }) => {
                 </div>
               </div>
               
+              {apiError && (
+                <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-6 text-sm">
+                  <AlertCircle className="inline w-4 h-4 mr-2" />
+                  {apiError}
+                </div>
+              )}
+              
               <div className="mb-6">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -960,20 +1138,7 @@ const LibraryApp = ({ user, onLogout }) => {
                           <Camera className="w-5 h-5" />
                         </button>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">Scan barcode to auto-fill book details</p>
-                    </div>onClick={() => fillBookFormWithISBN('9780310205715')} 
-                          className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200"
-                        >
-                          Try: 9780310205715
-                        </button>
-                        <button 
-                          onClick={() => fillBookFormWithISBN('9780060652926')} 
-                          className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200"
-                        >
-                          Try: 9780060652926
-                        </button>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">Scan ISBN barcode or click sample ISBNs to auto-fill book details</p>
+                      <p className="text-xs text-gray-500 mt-1">Scan ISBN barcode to auto-fill book details</p>
                     </div>
                     
                     <select value={newBook.category} onChange={(e) => setNewBook({...newBook, category: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
@@ -988,9 +1153,7 @@ const LibraryApp = ({ user, onLogout }) => {
                       <option value="Reference">Reference</option>
                     </select>
                     <input type="number" value={newBook.quantity} onChange={(e) => setNewBook({...newBook, quantity: e.target.value})} placeholder="Quantity" min="1" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                    <button onClick={handleAddBook} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-semibold">
-                      Add Book
-                    </button>
+                    <button onClick={handleAddBook} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-semibold">Add Book</button>
                   </div>
                 </div>
                 
@@ -1034,8 +1197,299 @@ const LibraryApp = ({ user, onLogout }) => {
         </div>
       );
       
-      // Additional screens would go here (members, notifications, reports, settings)
-      // For brevity, I'll just show the main screens above
+      case 'members': return (
+        <div className="min-h-screen bg-gradient-to-br from-purple-50 to-violet-100 p-6">
+          <div className="max-w-6xl mx-auto">
+            <div className="bg-white rounded-xl shadow-lg p-8">
+              <div className="flex items-center mb-6">
+                <button onClick={() => setCurrentScreen('main')} className="mr-4 p-2 hover:bg-gray-100 rounded-lg">
+                  <ArrowLeft className="w-6 h-6" />
+                </button>
+                <h2 className="text-3xl font-bold text-gray-800">Members Management</h2>
+              </div>
+              
+              <div className="mb-6">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input type="text" value={searchQuery} onChange={handleSearchQueryChange} placeholder="Search members by name, email, or ID..." className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-1">
+                  <h3 className="text-xl font-semibold mb-4 flex items-center">
+                    <Plus className="w-5 h-5 mr-2" />
+                    Add New Member
+                  </h3>
+                  <div className="space-y-4">
+                    <input type="text" value={newMember.name} onChange={(e) => setNewMember({...newMember, name: e.target.value})} placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                    <input type="email" value={newMember.email} onChange={(e) => setNewMember({...newMember, email: e.target.value})} placeholder="Email Address *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                    <input type="tel" value={newMember.phone} onChange={(e) => setNewMember({...newMember, phone: e.target.value})} placeholder="Phone Number" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                    <select value={newMember.membershipType} onChange={(e) => setNewMember({...newMember, membershipType: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                      <option value="Standard">Standard</option>
+                      <option value="Student">Student</option>
+                      <option value="Senior">Senior</option>
+                      <option value="Staff">Church Staff</option>
+                    </select>
+                    <button onClick={handleAddMember} className="w-full bg-purple-500 hover:bg-purple-600 text-white py-3 rounded-lg font-semibold">Add Member</button>
+                  </div>
+                </div>
+                
+                <div className="lg:col-span-2">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-semibold">Member Directory ({getFilteredMembers().length})</h3>
+                  </div>
+                  
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {getFilteredMembers().length === 0 ? (
+                      <p className="text-gray-500 text-center py-8">No members found</p>
+                    ) : (
+                      getFilteredMembers().map(member => {
+                        const memberLoans = getMemberLoans(member.id);
+                        const memberOverdue = overdueItems.filter(item => item.memberId === member.id);
+                        return (
+                          <div key={member.id} className="bg-gray-50 p-4 rounded-lg">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="font-medium text-lg">{member.name}</div>
+                                <div className="text-gray-600">{member.email}</div>
+                                {member.phone && <div className="text-sm text-gray-500">{member.phone}</div>}
+                                <div className="text-sm text-gray-500 mt-1">ID: {member.id} | Type: {member.membershipType} | Joined: {member.joinDate}</div>
+                                <div className="text-sm mt-1">
+                                  <span className="text-blue-600">Active Loans: {memberLoans.length}/{settings.maxLoansPerMember}</span>
+                                  {memberOverdue.length > 0 && <span className="ml-3 text-red-600">Overdue: {memberOverdue.length}</span>}
+                                </div>
+                              </div>
+                              <button onClick={() => handleDeleteMember(member.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg ml-4" title="Delete member">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <BarcodeScannerModal />
+        </div>
+      );
+
+      case 'notifications': return (
+        <div className="min-h-screen bg-gradient-to-br from-yellow-50 to-orange-100 p-6">
+          <div className="max-w-4xl mx-auto">
+            <div className="bg-white rounded-xl shadow-lg p-8">
+              <div className="flex items-center mb-6">
+                <button onClick={() => setCurrentScreen('main')} className="mr-4 p-2 hover:bg-gray-100 rounded-lg">
+                  <ArrowLeft className="w-6 h-6" />
+                </button>
+                <h2 className="text-3xl font-bold text-gray-800">Notifications</h2>
+              </div>
+              
+              {notifications.length === 0 ? (
+                <div className="text-center py-12">
+                  <Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500">No notifications at this time</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {notifications.map(notification => (
+                    <div key={notification.id} className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                      <p className="text-yellow-800">{notification.message}</p>
+                      <p className="text-xs text-yellow-600 mt-2">{notification.date}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+
+      case 'reports': return (
+        <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100 p-6">
+          <div className="max-w-6xl mx-auto">
+            <div className="bg-white rounded-xl shadow-lg p-8">
+              <div className="flex items-center mb-6">
+                <button onClick={() => setCurrentScreen('main')} className="mr-4 p-2 hover:bg-gray-100 rounded-lg">
+                  <ArrowLeft className="w-6 h-6" />
+                </button>
+                <h2 className="text-3xl font-bold text-gray-800">Library Reports</h2>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-blue-50 p-6 rounded-lg">
+                  <h3 className="text-xl font-semibold mb-4">Collection Summary</h3>
+                  <div className="space-y-2">
+                    <p className="flex justify-between"><span>Total Books:</span> <span className="font-semibold">{books.length}</span></p>
+                    <p className="flex justify-between"><span>Total Copies:</span> <span className="font-semibold">{books.reduce((sum, book) => sum + book.total, 0)}</span></p>
+                    <p className="flex justify-between"><span>Available:</span> <span className="font-semibold">{books.reduce((sum, book) => sum + book.available, 0)}</span></p>
+                    <p className="flex justify-between"><span>On Loan:</span> <span className="font-semibold">{loans.filter(loan => loan.status === 'active').length}</span></p>
+                  </div>
+                </div>
+                
+                <div className="bg-green-50 p-6 rounded-lg">
+                  <h3 className="text-xl font-semibold mb-4">Member Statistics</h3>
+                  <div className="space-y-2">
+                    <p className="flex justify-between"><span>Total Members:</span> <span className="font-semibold">{members.length}</span></p>
+                    <p className="flex justify-between"><span>Active Borrowers:</span> <span className="font-semibold">{new Set(loans.filter(l => l.status === 'active').map(l => l.memberId)).size}</span></p>
+                    <p className="flex justify-between"><span>New This Month:</span> <span className="font-semibold">
+                      {members.filter(m => {
+                        const joinDate = new Date(m.joinDate);
+                        const now = new Date();
+                        return joinDate.getMonth() === now.getMonth() && joinDate.getFullYear() === now.getFullYear();
+                      }).length}
+                    </span></p>
+                  </div>
+                </div>
+                
+                <div className="bg-orange-50 p-6 rounded-lg">
+                  <h3 className="text-xl font-semibold mb-4">Loan Activity</h3>
+                  <div className="space-y-2">
+                    <p className="flex justify-between"><span>Active Loans:</span> <span className="font-semibold">{loans.filter(loan => loan.status === 'active').length}</span></p>
+                    <p className="flex justify-between"><span>Overdue Items:</span> <span className="font-semibold text-red-600">{overdueItems.length}</span></p>
+                    <p className="flex justify-between"><span>Returns Today:</span> <span className="font-semibold">
+                      {loans.filter(loan => loan.returnDate === new Date().toISOString().split('T')[0]).length}
+                    </span></p>
+                    <p className="flex justify-between"><span>Total Returns:</span> <span className="font-semibold">{loans.filter(loan => loan.status === 'returned').length}</span></p>
+                  </div>
+                </div>
+                
+                <div className="bg-purple-50 p-6 rounded-lg">
+                  <h3 className="text-xl font-semibold mb-4">Popular Categories</h3>
+                  <div className="space-y-2">
+                    {Object.entries(books.reduce((acc, book) => {
+                      acc[book.category] = (acc[book.category] || 0) + 1;
+                      return acc;
+                    }, {}))
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 4)
+                      .map(([category, count]) => (
+                        <p key={category} className="flex justify-between">
+                          <span>{category}:</span>
+                          <span className="font-semibold">{count} books</span>
+                        </p>
+                      ))}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-8 flex justify-end">
+                <button onClick={exportData} className="flex items-center gap-2 px-6 py-3 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors">
+                  <Download className="w-5 h-5" />
+                  Export Full Report
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+      
+      case 'settings': return (
+        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-slate-100 p-6">
+          <div className="max-w-4xl mx-auto">
+            <div className="bg-white rounded-xl shadow-lg p-8">
+              <div className="flex items-center mb-8">
+                <button onClick={() => setCurrentScreen('main')} className="mr-4 p-2 hover:bg-gray-100 rounded-lg">
+                  <ArrowLeft className="w-6 h-6" />
+                </button>
+                <h2 className="text-3xl font-bold text-gray-800">Library Settings</h2>
+              </div>
+              
+              <div className="space-y-8">
+                <div>
+                  <h3 className="text-xl font-semibold mb-4">Library Information</h3>
+                  <div className="grid grid-cols-1 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Library Name</label>
+                      <input type="text" value={settings.libraryName} onChange={(e) => setSettings({...settings, libraryName: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <h3 className="text-xl font-semibold mb-4">Loan Policies</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Maximum loans per member</label>
+                      <input type="number" value={settings.maxLoansPerMember} onChange={(e) => setSettings({...settings, maxLoansPerMember: parseInt(e.target.value) || 10})} min="1" max="50" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Loan period (days)</label>
+                      <input type="number" value={settings.loanPeriodDays} onChange={(e) => setSettings({...settings, loanPeriodDays: parseInt(e.target.value) || 14})} min="1" max="90" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <h3 className="text-xl font-semibold mb-4">Features</h3>
+                  <div className="space-y-4">
+                    <label className="flex items-center">
+                      <input type="checkbox" checked={settings.allowReservations} onChange={(e) => setSettings({...settings, allowReservations: e.target.checked})} className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
+                      <span>Allow book reservations</span>
+                    </label>
+                    
+                    <label className="flex items-center">
+                      <input type="checkbox" checked={settings.autoReminders} onChange={(e) => setSettings({...settings, autoReminders: e.target.checked})} className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
+                      <span>Send automatic overdue reminders</span>
+                    </label>
+                    
+                    <label className="flex items-center">
+                      <input type="checkbox" checked={settings.enableFines} onChange={(e) => setSettings({...settings, enableFines: e.target.checked})} className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
+                      <span>Enable overdue fines (not recommended for church libraries)</span>
+                    </label>
+                    
+                    {settings.enableFines && (
+                      <div className="ml-6">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Fine per day ($)</label>
+                        <input type="number" value={settings.finePerDay} onChange={(e) => setSettings({...settings, finePerDay: parseFloat(e.target.value) || 0})} min="0" step="0.01" className="w-32 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div>
+                  <h3 className="text-xl font-semibold mb-4">Data Management</h3>
+                  <div className="flex gap-4">
+                    <button onClick={exportData} className="flex items-center gap-2 px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+                      <Download className="w-5 h-5" />
+                      Export All Data
+                    </button>
+                    <label className="flex items-center gap-2 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 cursor-pointer transition-colors">
+                      <Upload className="w-5 h-5" />
+                      Import Data
+                      <input type="file" accept=".json" onChange={importData} className="hidden" />
+                    </label>
+                  </div>
+                  <p className="text-sm text-gray-600 mt-2">Export creates a backup of all library data. Import allows you to restore from a previous backup.</p>
+                </div>
+                
+                <div className="pt-6 border-t border-gray-200">
+                  <button onClick={() => {
+                    if (window.confirm('This will reset all settings to defaults. Continue?')) {
+                      setSettings({
+                        libraryName: 'Bibliokeeper',
+                        maxLoansPerMember: 10,
+                        loanPeriodDays: 14,
+                        enableFines: false,
+                        finePerDay: 0.00,
+                        allowReservations: true,
+                        autoReminders: true
+                      });
+                      alert('Settings reset to defaults.');
+                    }
+                  }} className="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                    Reset to Defaults
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
       
       default: return <MainScreen />;
     }
@@ -1047,29 +1501,91 @@ const LibraryApp = ({ user, onLogout }) => {
 const Root = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    // Mock authentication for demo
-    const mockAuth = mockFirebase.getAuth();
-    const unsubscribe = mockAuth.onAuthStateChanged((user) => {
-      setUser(user);
+    if (typeof window === "undefined") {
       setLoading(false);
-    });
+      return;
+    }
 
-    return () => unsubscribe();
+    if (isPlaceholderConfig(firebaseConfig)) {
+      setAuthError("Firebase configuration is incomplete. Please set up environment variables.");
+      setLoading(false);
+      return;
+    }
+
+    const app = ensureFirebaseApp();
+    if (!app) {
+      setAuthError("Failed to initialize Firebase");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const auth = getAuth(app);
+      const unsubscribe = onAuthStateChanged(auth, 
+        (user) => {
+          setUser(user);
+          setLoading(false);
+        },
+        (error) => {
+          console.error("Auth state change error:", error);
+          setAuthError("Authentication service unavailable");
+          setLoading(false);
+        }
+      );
+
+      return () => unsubscribe();
+    } catch (error) {
+      console.error("Auth setup error:", error);
+      setAuthError("Failed to set up authentication");
+      setLoading(false);
+    }
   }, []);
 
   const handleLogout = async () => {
     try {
-      await mockFirebase.getAuth().signOut();
-      setUser(null);
+      const app = ensureFirebaseApp();
+      if (app) {
+        const auth = getAuth(app);
+        await signOut(auth);
+        setUser(null);
+        try {
+          localStorage.removeItem('bibliokeeper_books');
+          localStorage.removeItem('bibliokeeper_members');
+          localStorage.removeItem('bibliokeeper_loans');
+          localStorage.removeItem('bibliokeeper_settings');
+        } catch (e) {
+          console.error('Error clearing localStorage:', e);
+        }
+      }
     } catch (err) {
       console.error("Logout error:", err);
+      alert("Error signing out. Please try again.");
     }
   };
 
   if (loading) {
     return <LoadingScreen />;
+  }
+
+  if (authError) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-red-50">
+        <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-md">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Configuration Error</h2>
+          <p className="text-gray-600 mb-4">{authError}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (!user) {
@@ -1079,4 +1595,10 @@ const Root = () => {
   return <LibraryApp user={user} onLogout={handleLogout} />;
 };
 
-export default Root;
+const App = () => (
+  <ErrorBoundary>
+    <Root />
+  </ErrorBoundary>
+);
+
+export default App;
