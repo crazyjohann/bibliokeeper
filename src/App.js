@@ -1,11 +1,10 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell } from 'lucide-react';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell, AlertCircle } from 'lucide-react';
 
-// Firebase config
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AlzaSyCeJLBYthkoyaMckgTT0vnoZ_slXYrvC4", 
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyCeJLBYthkoyaMckgTT0vnoZ_slXYrvC4",
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "bibliokeeper.firebaseapp.com",
   projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "bibliokeeper",
   storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "bibliokeeper.appspot.com",
@@ -13,17 +12,43 @@ const firebaseConfig = {
   appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:771697995545:web:c23b431eb9321dbd49df88"
 };
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('Error caught by boundary:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-red-50">
+          <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-md">
+            <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold mb-2">Something went wrong</h2>
+            <p className="text-gray-600 mb-4">The application encountered an error. Please refresh the page to try again.</p>
+            <button onClick={() => window.location.reload()} className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg">
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function isPlaceholderConfig(cfg) {
-  return Object.values(cfg).some(
-    (v) => typeof v === "string" && v.includes("YOUR_")
-  );
+  return Object.values(cfg).some((v) => typeof v === "string" && (v.includes("YOUR_") || v === ""));
 }
 
 function ensureFirebaseApp() {
   if (typeof window === "undefined") return null;
-  if (getApps().length) {
-    return getApps()[0];
-  }
+  if (getApps().length) return getApps()[0];
   try {
     return initializeApp(firebaseConfig);
   } catch (err) {
@@ -32,7 +57,15 @@ function ensureFirebaseApp() {
   }
 }
 
-// Login Component
+const LoadingScreen = () => (
+  <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+      <p className="text-gray-600">Loading Bibliokeeper...</p>
+    </div>
+  </div>
+);
+
 const LoginScreen = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -40,28 +73,31 @@ const LoginScreen = ({ onLogin }) => {
   const handleLogin = async () => {
     setLoading(true);
     setError(null);
-
     if (isPlaceholderConfig(firebaseConfig)) {
-      setError("Firebase config still incomplete. Check your values.");
+      setError("Firebase configuration is incomplete. Please check your environment variables.");
       setLoading(false);
       return;
     }
-
     const app = ensureFirebaseApp();
     if (!app) {
-      setError("Unable to initialize Firebase app. Check console for details.");
+      setError("Unable to initialize Firebase. Please check your configuration.");
       setLoading(false);
       return;
     }
-
     try {
       const auth = getAuth(app);
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       onLogin(result.user);
     } catch (err) {
-      console.error("Auth error:", err);
-      setError(err?.message || "Login failed. See console for details.");
+      console.error("Authentication error:", err);
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError("Sign-in was cancelled. Please try again.");
+      } else if (err.code === 'auth/network-request-failed') {
+        setError("Network error. Please check your internet connection.");
+      } else {
+        setError("Sign-in failed. Please try again or contact support.");
+      }
     } finally {
       setLoading(false);
     }
@@ -70,28 +106,52 @@ const LoginScreen = ({ onLogin }) => {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-100 to-blue-200">
       <div className="bg-white p-8 rounded-2xl shadow-xl text-center w-96">
-        <h1 className="text-3xl font-bold mb-4">📚 Librarian Login</h1>
-        <p className="text-sm text-gray-600 mb-4">Sign in with a Google account authorized by the library.</p>
-        {error && <p className="text-red-500 mb-4">{error}</p>}
-
+        <h1 className="text-3xl font-bold mb-4">📚 Bibliokeeper</h1>
+        <p className="text-sm text-gray-600 mb-4">Church Library Management System</p>
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+            {error}
+          </div>
+        )}
         <button
           onClick={handleLogin}
           disabled={loading}
-          className="bg-red-500 hover:bg-red-600 disabled:opacity-60 text-white px-6 py-3 rounded-xl font-semibold w-full"
+          className="bg-red-500 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-semibold w-full transition-colors"
         >
           {loading ? "Signing in..." : "Sign in with Google"}
         </button>
+        <p className="text-xs text-gray-500 mt-4">Authorized librarians only</p>
       </div>
     </div>
   );
 };
 
-// Main Library App
 const LibraryApp = ({ user, onLogout }) => {
   const [currentScreen, setCurrentScreen] = useState('main');
-  const [books, setBooks] = useState([]);
-  const [members, setMembers] = useState([]);
-  const [loans, setLoans] = useState([]);
+  const [books, setBooks] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bibliokeeper_books');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [members, setMembers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bibliokeeper_members');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loans, setLoans] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bibliokeeper_loans');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [reservations, setReservations] = useState([]);
   const [overdueItems, setOverdueItems] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -102,36 +162,151 @@ const LibraryApp = ({ user, onLogout }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [scanningFor, setScanningFor] = useState(null);
+  const [apiError, setApiError] = useState(null);
+  const [browserCompatWarning, setBrowserCompatWarning] = useState(false);
   const videoRef = useRef(null);
+  const scanTimeoutRef = useRef(null);
+  const isScanningRef = useRef(false);
   
-  const [settings, setSettings] = useState({
-    libraryName: 'Bibliokeeper',
-    maxLoansPerMember: 10,
-    loanPeriodDays: 14,
-    enableFines: false,
-    finePerDay: 0.00,
-    allowReservations: true,
-    autoReminders: true
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bibliokeeper_settings');
+      return saved ? JSON.parse(saved) : {
+        libraryName: 'Bibliokeeper',
+        maxLoansPerMember: 10,
+        loanPeriodDays: 14,
+        enableFines: false,
+        finePerDay: 0.00,
+        allowReservations: true,
+        autoReminders: true
+      };
+    } catch {
+      return {
+        libraryName: 'Bibliokeeper',
+        maxLoansPerMember: 10,
+        loanPeriodDays: 14,
+        enableFines: false,
+        finePerDay: 0.00,
+        allowReservations: true,
+        autoReminders: true
+      };
+    }
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bibliokeeper_books', JSON.stringify(books));
+    } catch (e) {
+      console.error('Failed to save books to localStorage:', e);
+    }
+  }, [books]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bibliokeeper_members', JSON.stringify(members));
+    } catch (e) {
+      console.error('Failed to save members to localStorage:', e);
+    }
+  }, [members]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bibliokeeper_loans', JSON.stringify(loans));
+    } catch (e) {
+      console.error('Failed to save loans to localStorage:', e);
+    }
+  }, [loans]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bibliokeeper_settings', JSON.stringify(settings));
+    } catch (e) {
+      console.error('Failed to save settings to localStorage:', e);
+    }
+  }, [settings]);
+
+  useEffect(() => {
+    if (!('BarcodeDetector' in window) && !browserCompatWarning) {
+      setBrowserCompatWarning(true);
+    }
+  }, [browserCompatWarning]);
 
   const generateId = (prefix) => {
     const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substr(2, 5);
+    const random = Math.random().toString(36).substring(2, 7);
     return `${prefix}${timestamp}${random}`.toUpperCase();
   };
 
-  const findBook = (bookId) => books.find(book => book.id === bookId || book.isbn === bookId);
-  const findMember = (memberId) => members.find(member => member.id === memberId);
+  const findBook = (bookId) => {
+    if (!bookId) return null;
+    return books.find(book => book.id === bookId || book.isbn === bookId);
+  };
+  
+  const findMember = (memberId) => {
+    if (!memberId) return null;
+    return members.find(member => member.id === memberId);
+  };
 
   const handleScanInputChange = useCallback((e) => setScanInput(e.target.value), []);
   const handleMemberScanInputChange = useCallback((e) => setMemberScanInput(e.target.value), []);
   const handleSearchQueryChange = useCallback((e) => setSearchQuery(e.target.value), []);
 
+  const fetchBookInfoFromAPI = async (isbn) => {
+    try {
+      setApiError(null);
+      const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch book information');
+      }
+      const data = await response.json();
+      const bookData = data[`ISBN:${isbn}`];
+      if (bookData) {
+        return {
+          title: bookData.title || 'Unknown Title',
+          author: bookData.authors && bookData.authors.length > 0 ? bookData.authors[0].name : 'Unknown Author',
+          category: bookData.subjects && bookData.subjects.length > 0 ? bookData.subjects[0].name : 'General'
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching book info:', error);
+      setApiError('Could not fetch book information. Please enter details manually.');
+      return null;
+    }
+  };
+
+  const fetchBookInfoFromISBN = async (isbn) => {
+    try {
+      const bookInfo = await fetchBookInfoFromAPI(isbn);
+      if (bookInfo) {
+        setNewBook({
+          title: bookInfo.title,
+          author: bookInfo.author,
+          isbn: isbn,
+          category: bookInfo.category,
+          quantity: 1
+        });
+        alert(`Book information found and filled automatically!`);
+      } else {
+        setNewBook(prev => ({ ...prev, isbn: isbn }));
+        alert(`ISBN detected: ${isbn}. Please fill in the remaining book details.`);
+      }
+    } catch (error) {
+      setNewBook(prev => ({ ...prev, isbn: isbn }));
+      alert(`ISBN detected: ${isbn}. Could not fetch book details automatically.`);
+    }
+  };
+
   const startBarcodeScanning = (type) => {
     setScanningFor(type);
     setIsScanning(true);
+    isScanningRef.current = true;
     
-    // Request camera access with back camera preference for better barcode scanning
+    scanTimeoutRef.current = setTimeout(() => {
+      stopBarcodeScanning();
+      alert('Scanning timed out. Please try manual entry.');
+    }, 30000);
+    
     navigator.mediaDevices.getUserMedia({ 
       video: { 
         facingMode: { ideal: 'environment' },
@@ -140,19 +315,23 @@ const LibraryApp = ({ user, onLogout }) => {
       } 
     })
     .then(stream => {
-      if (videoRef.current) {
+      if (videoRef.current && isScanningRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        videoRef.current.play().catch(e => console.error('Video play error:', e));
         
-        // Try to detect barcodes from video stream
         if ('BarcodeDetector' in window) {
           startBarcodeDetection();
         }
+      } else {
+        stream.getTracks().forEach(track => track.stop());
       }
     })
-    .catch(() => {
-      alert("Camera access denied. Please use manual input or try again.");
+    .catch((err) => {
+      console.error('Camera error:', err);
+      alert("Camera access denied or not available. Please use manual input.");
       setIsScanning(false);
+      isScanningRef.current = false;
+      setScanningFor(null);
     });
   };
 
@@ -161,50 +340,57 @@ const LibraryApp = ({ user, onLogout }) => {
       return;
     }
 
-    const barcodeDetector = new window.BarcodeDetector();
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
+    try {
+      const barcodeDetector = new window.BarcodeDetector();
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
 
-    const detectBarcode = () => {
-      if (!videoRef.current || videoRef.current.readyState !== 4) {
-        setTimeout(detectBarcode, 100);
-        return;
-      }
-
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
-      context.drawImage(videoRef.current, 0, 0);
-
-      barcodeDetector.detect(canvas)
-        .then(barcodes => {
-          if (barcodes.length > 0 && isScanning) {
-            const barcode = barcodes[0].rawValue;
-            handleBarcodeDetected(barcode);
-          } else if (isScanning) {
+      const detectBarcode = () => {
+        if (!videoRef.current || videoRef.current.readyState !== 4 || !isScanningRef.current) {
+          if (isScanningRef.current) {
             setTimeout(detectBarcode, 100);
           }
-        })
-        .catch(() => {
-          if (isScanning) {
-            setTimeout(detectBarcode, 100);
-          }
-        });
-    };
+          return;
+        }
 
-    detectBarcode();
+        canvas.width = videoRef.current.videoWidth;
+        canvas.height = videoRef.current.videoHeight;
+        context.drawImage(videoRef.current, 0, 0);
+
+        barcodeDetector.detect(canvas)
+          .then(barcodes => {
+            if (barcodes.length > 0 && isScanningRef.current) {
+              const barcode = barcodes[0].rawValue;
+              handleBarcodeDetected(barcode);
+            } else if (isScanningRef.current) {
+              requestAnimationFrame(detectBarcode);
+            }
+          })
+          .catch((err) => {
+            console.error('Barcode detection error:', err);
+            if (isScanningRef.current) {
+              setTimeout(detectBarcode, 500);
+            }
+          });
+      };
+
+      detectBarcode();
+    } catch (err) {
+      console.error('BarcodeDetector initialization error:', err);
+      alert('Barcode detection is not supported in this browser. Please use manual input.');
+      stopBarcodeScanning();
+    }
   };
 
   const handleBarcodeDetected = async (barcode) => {
     if (scanningFor === 'book') {
       setScanInput(barcode);
-      // Check if it's an ISBN and try to find/create the book entry automatically
       const existingBook = findBook(barcode);
       if (!existingBook && barcode.length >= 10) {
-        // This might be an ISBN for a book not in our system
         try {
           const bookInfo = await fetchBookInfoFromAPI(barcode);
           if (bookInfo) {
-            const newBook = {
+            const newBookEntry = {
               id: generateId('B'),
               title: bookInfo.title,
               author: bookInfo.author,
@@ -213,7 +399,7 @@ const LibraryApp = ({ user, onLogout }) => {
               available: 1,
               total: 1
             };
-            setBooks(prev => [...prev, newBook]);
+            setBooks(prev => [...prev, newBookEntry]);
             alert(`New book "${bookInfo.title}" by ${bookInfo.author} added to library automatically!`);
           }
         } catch (error) {
@@ -223,7 +409,6 @@ const LibraryApp = ({ user, onLogout }) => {
     } else if (scanningFor === 'member') {
       setMemberScanInput(barcode);
     } else if (scanningFor === 'isbn') {
-      // For adding new books, try to fetch book info from ISBN
       await fetchBookInfoFromISBN(barcode);
     }
     
@@ -232,67 +417,41 @@ const LibraryApp = ({ user, onLogout }) => {
   };
 
   const stopBarcodeScanning = () => {
+    if (scanTimeoutRef.current) {
+      clearTimeout(scanTimeoutRef.current);
+      scanTimeoutRef.current = null;
+    }
+    
+    isScanningRef.current = false;
+    
     if (videoRef.current && videoRef.current.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+      const stream = videoRef.current.srcObject;
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
     }
     setIsScanning(false);
     setScanningFor(null);
   };
 
+  useEffect(() => {
+    return () => {
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current);
+      }
+      isScanningRef.current = false;
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject;
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
   const captureBarcode = () => {
-    // Fallback manual capture for browsers without BarcodeDetector
     const userInput = prompt('Please enter the barcode/ISBN manually:');
-    if (userInput) {
-      handleBarcodeDetected(userInput);
+    if (userInput && userInput.trim()) {
+      handleBarcodeDetected(userInput.trim());
     } else {
       stopBarcodeScanning();
-    }
-  };
-
-  const fetchBookInfoFromAPI = async (isbn) => {
-    try {
-      const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
-      const data = await response.json();
-      
-      const bookData = data[`ISBN:${isbn}`];
-      if (bookData) {
-        return {
-          title: bookData.title || 'Unknown Title',
-          author: bookData.authors ? bookData.authors[0].name : 'Unknown Author',
-          category: bookData.subjects ? bookData.subjects[0].name : 'General'
-        };
-      }
-      return null;
-    } catch (error) {
-      console.error('Error fetching book info:', error);
-      return null;
-    }
-  };
-
-  const fetchBookInfoFromISBN = async (isbn) => {
-    try {
-      // Try to fetch book info from Open Library API
-      const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
-      const data = await response.json();
-      
-      const bookData = data[`ISBN:${isbn}`];
-      if (bookData) {
-        setNewBook({
-          title: bookData.title || '',
-          author: bookData.authors ? bookData.authors[0].name : '',
-          isbn: isbn,
-          category: bookData.subjects ? bookData.subjects[0].name : '',
-          quantity: 1
-        });
-        alert(`Book information found and filled automatically!`);
-      } else {
-        // Fallback: just set the ISBN and let user fill the rest
-        setNewBook(prev => ({ ...prev, isbn: isbn }));
-        alert(`ISBN detected: ${isbn}. Please fill in the remaining book details.`);
-      }
-    } catch (error) {
-      setNewBook(prev => ({ ...prev, isbn: isbn }));
-      alert(`ISBN detected: ${isbn}. Could not fetch book details automatically.`);
     }
   };
 
@@ -306,7 +465,19 @@ const LibraryApp = ({ user, onLogout }) => {
     const today = new Date().toISOString().split('T')[0];
     const overdue = loans.filter(loan => loan.status === 'active' && loan.dueDate < today);
     setOverdueItems(overdue);
-  }, [loans]);
+    
+    const newNotifications = overdue.map(item => {
+      const book = findBook(item.bookId);
+      const member = findMember(item.memberId);
+      return {
+        id: item.id,
+        type: 'overdue',
+        message: `"${book?.title || 'Unknown Book'}" loaned to ${member?.name || 'Unknown Member'} is overdue`,
+        date: today
+      };
+    });
+    setNotifications(newNotifications);
+  }, [loans, books, members]);
 
   const handleLoan = () => {
     const book = findBook(scanInput);
@@ -347,7 +518,7 @@ const LibraryApp = ({ user, onLogout }) => {
     
     setLoans([...loans, newLoan]);
     setBooks(books.map(b => 
-      b.id === book.id ? { ...b, available: b.available - 1 } : b
+      b.id === book.id ? { ...b, available: Math.max(0, b.available - 1) } : b
     ));
     
     setScanInput('');
@@ -380,7 +551,7 @@ const LibraryApp = ({ user, onLogout }) => {
     ));
     
     setBooks(books.map(b => 
-      b.id === book.id ? { ...b, available: b.available + 1 } : b
+      b.id === book.id ? { ...b, available: Math.min(b.total, b.available + 1) } : b
     ));
     
     setScanInput('');
@@ -401,14 +572,21 @@ const LibraryApp = ({ user, onLogout }) => {
       return;
     }
     
+    const quantity = parseInt(newBook.quantity) || 1;
+    
+    if (quantity < 1 || quantity > 100) {
+      alert('Please enter a valid quantity between 1 and 100');
+      return;
+    }
+    
     const book = {
       id: generateId('B'),
-      title: newBook.title,
-      author: newBook.author,
-      isbn: newBook.isbn,
-      category: newBook.category || 'General',
-      available: parseInt(newBook.quantity),
-      total: parseInt(newBook.quantity)
+      title: newBook.title.trim(),
+      author: newBook.author.trim(),
+      isbn: newBook.isbn.trim(),
+      category: newBook.category.trim() || 'General',
+      available: quantity,
+      total: quantity
     };
     
     setBooks([...books, book]);
@@ -423,8 +601,10 @@ const LibraryApp = ({ user, onLogout }) => {
       return;
     }
     
-    setBooks(books.filter(book => book.id !== bookId));
-    alert('Book deleted successfully!');
+    if (window.confirm('Are you sure you want to delete this book?')) {
+      setBooks(books.filter(book => book.id !== bookId));
+      alert('Book deleted successfully!');
+    }
   };
 
   const handleAddMember = () => {
@@ -433,16 +613,22 @@ const LibraryApp = ({ user, onLogout }) => {
       return;
     }
     
-    if (members.some(member => member.email === newMember.email)) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newMember.email)) {
+      alert('Please enter a valid email address!');
+      return;
+    }
+    
+    if (members.some(member => member.email.toLowerCase() === newMember.email.toLowerCase())) {
       alert('A member with this email already exists!');
       return;
     }
     
     const member = {
       id: generateId('M'),
-      name: newMember.name,
-      email: newMember.email,
-      phone: newMember.phone || '',
+      name: newMember.name.trim(),
+      email: newMember.email.trim(),
+      phone: newMember.phone.trim() || '',
       joinDate: new Date().toISOString().split('T')[0],
       membershipType: newMember.membershipType
     };
@@ -459,8 +645,10 @@ const LibraryApp = ({ user, onLogout }) => {
       return;
     }
     
-    setMembers(members.filter(member => member.id !== memberId));
-    alert('Member deleted successfully!');
+    if (window.confirm('Are you sure you want to delete this member?')) {
+      setMembers(members.filter(member => member.id !== memberId));
+      alert('Member deleted successfully!');
+    }
   };
 
   const getMemberLoans = (memberId) => {
@@ -469,7 +657,8 @@ const LibraryApp = ({ user, onLogout }) => {
       .map(loan => ({
         ...loan,
         book: findBook(loan.bookId)
-      }));
+      }))
+      .filter(loan => loan.book);
   };
 
   const getFilteredBooks = () => {
@@ -495,34 +684,71 @@ const LibraryApp = ({ user, onLogout }) => {
   };
 
   const exportData = () => {
-    const data = { books, members, loans, reservations, exportDate: new Date().toISOString() };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `bibliokeeper_backup_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const data = { 
+        books, 
+        members, 
+        loans, 
+        reservations, 
+        settings,
+        exportDate: new Date().toISOString(),
+        version: '1.0'
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bibliokeeper_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      alert('Data exported successfully!');
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Error exporting data. Please try again.');
+    }
   };
 
   const importData = (event) => {
-    const file = event.target.files[0];
+    const file = event.target.files?.[0];
     if (!file) return;
     
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const data = JSON.parse(e.target.result);
-        if (data.books) setBooks(data.books);
-        if (data.members) setMembers(data.members);
-        if (data.loans) setLoans(data.loans);
-        if (data.reservations) setReservations(data.reservations);
-        alert('Data imported successfully!');
+        const text = e.target?.result;
+        if (typeof text !== 'string') {
+          alert('Error reading file.');
+          return;
+        }
+        
+        const data = JSON.parse(text);
+        
+        if (!data.version) {
+          alert('Invalid backup file format.');
+          return;
+        }
+        
+        if (window.confirm('This will replace all current data. Are you sure you want to continue?')) {
+          if (Array.isArray(data.books)) setBooks(data.books);
+          if (Array.isArray(data.members)) setMembers(data.members);
+          if (Array.isArray(data.loans)) setLoans(data.loans);
+          if (Array.isArray(data.reservations)) setReservations(data.reservations);
+          if (data.settings && typeof data.settings === 'object') setSettings(data.settings);
+          alert('Data imported successfully!');
+        }
       } catch (error) {
+        console.error('Import error:', error);
         alert('Error importing data. Please check the file format.');
       }
     };
+    reader.onerror = () => {
+      alert('Error reading file. Please try again.');
+    };
     reader.readAsText(file);
+    
+    event.target.value = '';
   };
 
   const BarcodeScannerModal = () => (
@@ -542,16 +768,20 @@ const LibraryApp = ({ user, onLogout }) => {
             {'BarcodeDetector' in window ? (
               <p className="text-sm text-green-600 mt-2">Real-time barcode detection active</p>
             ) : (
-              <p className="text-sm text-orange-600 mt-2">Manual capture mode - position barcode and click capture</p>
+              <div>
+                <p className="text-sm text-orange-600 mt-2">Manual capture mode - position barcode and click capture</p>
+                <p className="text-xs text-gray-500 mt-1">Note: Your browser doesn't support automatic barcode detection</p>
+              </div>
             )}
           </div>
           
           <div className="relative mb-4">
             <video 
-              ref={videoRef} 
-              className="w-full h-64 bg-black rounded-lg"
+              ref={videoRef}
+              className="w-full h-64 bg-black rounded-lg object-cover"
               autoPlay 
               playsInline 
+              muted
             />
             <div className="absolute inset-0 border-2 border-red-500 rounded-lg pointer-events-none">
               <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-1 bg-red-500"></div>
@@ -561,15 +791,15 @@ const LibraryApp = ({ user, onLogout }) => {
           
           <div className="flex gap-3">
             {'BarcodeDetector' in window ? (
-              <button onClick={stopBarcodeScanning} className="w-full bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold">
+              <button onClick={stopBarcodeScanning} className="w-full bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold transition-colors">
                 Cancel
               </button>
             ) : (
               <>
-                <button onClick={captureBarcode} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-semibold">
-                  Capture
+                <button onClick={captureBarcode} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-semibold transition-colors">
+                  Manual Entry
                 </button>
-                <button onClick={stopBarcodeScanning} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold">
+                <button onClick={stopBarcodeScanning} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold transition-colors">
                   Cancel
                 </button>
               </>
@@ -583,6 +813,13 @@ const LibraryApp = ({ user, onLogout }) => {
   const MainScreen = () => (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
       <div className="max-w-6xl mx-auto">
+        {browserCompatWarning && !('BarcodeDetector' in window) && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-6 text-sm">
+            <AlertCircle className="inline w-4 h-4 mr-2" />
+            Your browser doesn't support automatic barcode scanning. You can still use manual entry or try Chrome/Edge browser for the best experience.
+          </div>
+        )}
+        
         <div className="flex justify-between items-center mb-12">
           <div className="text-center flex-1">
             <h1 className="text-4xl font-bold text-gray-800 mb-4">📚 {settings.libraryName}</h1>
@@ -605,7 +842,7 @@ const LibraryApp = ({ user, onLogout }) => {
             <button onClick={() => setCurrentScreen('settings')} className="p-3 bg-white rounded-lg shadow-lg hover:shadow-xl transition-all">
               <Settings className="w-6 h-6 text-gray-600" />
             </button>
-            <button onClick={onLogout} className="p-3 bg-red-500 text-white rounded-lg shadow-lg hover:shadow-xl transition-all">
+            <button onClick={onLogout} className="p-3 bg-red-500 text-white rounded-lg shadow-lg hover:shadow-xl hover:bg-red-600 transition-all">
               Logout
             </button>
           </div>
@@ -847,6 +1084,13 @@ const LibraryApp = ({ user, onLogout }) => {
                 </div>
               </div>
               
+              {apiError && (
+                <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-6 text-sm">
+                  <AlertCircle className="inline w-4 h-4 mr-2" />
+                  {apiError}
+                </div>
+              )}
+              
               <div className="mb-6">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -1009,6 +1253,116 @@ const LibraryApp = ({ user, onLogout }) => {
           <BarcodeScannerModal />
         </div>
       );
+
+      case 'notifications': return (
+        <div className="min-h-screen bg-gradient-to-br from-yellow-50 to-orange-100 p-6">
+          <div className="max-w-4xl mx-auto">
+            <div className="bg-white rounded-xl shadow-lg p-8">
+              <div className="flex items-center mb-6">
+                <button onClick={() => setCurrentScreen('main')} className="mr-4 p-2 hover:bg-gray-100 rounded-lg">
+                  <ArrowLeft className="w-6 h-6" />
+                </button>
+                <h2 className="text-3xl font-bold text-gray-800">Notifications</h2>
+              </div>
+              
+              {notifications.length === 0 ? (
+                <div className="text-center py-12">
+                  <Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500">No notifications at this time</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {notifications.map(notification => (
+                    <div key={notification.id} className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                      <p className="text-yellow-800">{notification.message}</p>
+                      <p className="text-xs text-yellow-600 mt-2">{notification.date}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+
+      case 'reports': return (
+        <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100 p-6">
+          <div className="max-w-6xl mx-auto">
+            <div className="bg-white rounded-xl shadow-lg p-8">
+              <div className="flex items-center mb-6">
+                <button onClick={() => setCurrentScreen('main')} className="mr-4 p-2 hover:bg-gray-100 rounded-lg">
+                  <ArrowLeft className="w-6 h-6" />
+                </button>
+                <h2 className="text-3xl font-bold text-gray-800">Library Reports</h2>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-blue-50 p-6 rounded-lg">
+                  <h3 className="text-xl font-semibold mb-4">Collection Summary</h3>
+                  <div className="space-y-2">
+                    <p className="flex justify-between"><span>Total Books:</span> <span className="font-semibold">{books.length}</span></p>
+                    <p className="flex justify-between"><span>Total Copies:</span> <span className="font-semibold">{books.reduce((sum, book) => sum + book.total, 0)}</span></p>
+                    <p className="flex justify-between"><span>Available:</span> <span className="font-semibold">{books.reduce((sum, book) => sum + book.available, 0)}</span></p>
+                    <p className="flex justify-between"><span>On Loan:</span> <span className="font-semibold">{loans.filter(loan => loan.status === 'active').length}</span></p>
+                  </div>
+                </div>
+                
+                <div className="bg-green-50 p-6 rounded-lg">
+                  <h3 className="text-xl font-semibold mb-4">Member Statistics</h3>
+                  <div className="space-y-2">
+                    <p className="flex justify-between"><span>Total Members:</span> <span className="font-semibold">{members.length}</span></p>
+                    <p className="flex justify-between"><span>Active Borrowers:</span> <span className="font-semibold">{new Set(loans.filter(l => l.status === 'active').map(l => l.memberId)).size}</span></p>
+                    <p className="flex justify-between"><span>New This Month:</span> <span className="font-semibold">
+                      {members.filter(m => {
+                        const joinDate = new Date(m.joinDate);
+                        const now = new Date();
+                        return joinDate.getMonth() === now.getMonth() && joinDate.getFullYear() === now.getFullYear();
+                      }).length}
+                    </span></p>
+                  </div>
+                </div>
+                
+                <div className="bg-orange-50 p-6 rounded-lg">
+                  <h3 className="text-xl font-semibold mb-4">Loan Activity</h3>
+                  <div className="space-y-2">
+                    <p className="flex justify-between"><span>Active Loans:</span> <span className="font-semibold">{loans.filter(loan => loan.status === 'active').length}</span></p>
+                    <p className="flex justify-between"><span>Overdue Items:</span> <span className="font-semibold text-red-600">{overdueItems.length}</span></p>
+                    <p className="flex justify-between"><span>Returns Today:</span> <span className="font-semibold">
+                      {loans.filter(loan => loan.returnDate === new Date().toISOString().split('T')[0]).length}
+                    </span></p>
+                    <p className="flex justify-between"><span>Total Returns:</span> <span className="font-semibold">{loans.filter(loan => loan.status === 'returned').length}</span></p>
+                  </div>
+                </div>
+                
+                <div className="bg-purple-50 p-6 rounded-lg">
+                  <h3 className="text-xl font-semibold mb-4">Popular Categories</h3>
+                  <div className="space-y-2">
+                    {Object.entries(books.reduce((acc, book) => {
+                      acc[book.category] = (acc[book.category] || 0) + 1;
+                      return acc;
+                    }, {}))
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 4)
+                      .map(([category, count]) => (
+                        <p key={category} className="flex justify-between">
+                          <span>{category}:</span>
+                          <span className="font-semibold">{count} books</span>
+                        </p>
+                      ))}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-8 flex justify-end">
+                <button onClick={exportData} className="flex items-center gap-2 px-6 py-3 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors">
+                  <Download className="w-5 h-5" />
+                  Export Full Report
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
       
       case 'settings': return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 to-slate-100 p-6">
@@ -1037,12 +1391,12 @@ const LibraryApp = ({ user, onLogout }) => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Maximum loans per member</label>
-                      <input type="number" value={settings.maxLoansPerMember} onChange={(e) => setSettings({...settings, maxLoansPerMember: parseInt(e.target.value)})} min="1" max="50" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input type="number" value={settings.maxLoansPerMember} onChange={(e) => setSettings({...settings, maxLoansPerMember: parseInt(e.target.value) || 10})} min="1" max="50" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Loan period (days)</label>
-                      <input type="number" value={settings.loanPeriodDays} onChange={(e) => setSettings({...settings, loanPeriodDays: parseInt(e.target.value)})} min="1" max="90" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input type="number" value={settings.loanPeriodDays} onChange={(e) => setSettings({...settings, loanPeriodDays: parseInt(e.target.value) || 14})} min="1" max="90" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                   </div>
                 </div>
@@ -1068,7 +1422,7 @@ const LibraryApp = ({ user, onLogout }) => {
                     {settings.enableFines && (
                       <div className="ml-6">
                         <label className="block text-sm font-medium text-gray-700 mb-2">Fine per day ($)</label>
-                        <input type="number" value={settings.finePerDay} onChange={(e) => setSettings({...settings, finePerDay: parseFloat(e.target.value)})} min="0" step="0.01" className="w-32 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        <input type="number" value={settings.finePerDay} onChange={(e) => setSettings({...settings, finePerDay: parseFloat(e.target.value) || 0})} min="0" step="0.01" className="w-32 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                       </div>
                     )}
                   </div>
@@ -1077,11 +1431,11 @@ const LibraryApp = ({ user, onLogout }) => {
                 <div>
                   <h3 className="text-xl font-semibold mb-4">Data Management</h3>
                   <div className="flex gap-4">
-                    <button onClick={exportData} className="flex items-center gap-2 px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600">
+                    <button onClick={exportData} className="flex items-center gap-2 px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
                       <Download className="w-5 h-5" />
                       Export All Data
                     </button>
-                    <label className="flex items-center gap-2 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 cursor-pointer">
+                    <label className="flex items-center gap-2 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 cursor-pointer transition-colors">
                       <Upload className="w-5 h-5" />
                       Import Data
                       <input type="file" accept=".json" onChange={importData} className="hidden" />
@@ -1104,7 +1458,7 @@ const LibraryApp = ({ user, onLogout }) => {
                       });
                       alert('Settings reset to defaults.');
                     }
-                  }} className="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600">
+                  }} className="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
                     Reset to Defaults
                   </button>
                 </div>
@@ -1123,10 +1477,47 @@ const LibraryApp = ({ user, onLogout }) => {
 
 const Root = () => {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && !isPlaceholderConfig(firebaseConfig)) {
-      ensureFirebaseApp();
+    if (typeof window === "undefined") {
+      setLoading(false);
+      return;
+    }
+
+    if (isPlaceholderConfig(firebaseConfig)) {
+      setAuthError("Firebase configuration is incomplete. Please set up environment variables.");
+      setLoading(false);
+      return;
+    }
+
+    const app = ensureFirebaseApp();
+    if (!app) {
+      setAuthError("Failed to initialize Firebase");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const auth = getAuth(app);
+      const unsubscribe = onAuthStateChanged(auth, 
+        (user) => {
+          setUser(user);
+          setLoading(false);
+        },
+        (error) => {
+          console.error("Auth state change error:", error);
+          setAuthError("Authentication service unavailable");
+          setLoading(false);
+        }
+      );
+
+      return () => unsubscribe();
+    } catch (error) {
+      console.error("Auth setup error:", error);
+      setAuthError("Failed to set up authentication");
+      setLoading(false);
     }
   }, []);
 
@@ -1136,17 +1527,55 @@ const Root = () => {
       if (app) {
         const auth = getAuth(app);
         await signOut(auth);
+        setUser(null);
+        try {
+          localStorage.removeItem('bibliokeeper_books');
+          localStorage.removeItem('bibliokeeper_members');
+          localStorage.removeItem('bibliokeeper_loans');
+          localStorage.removeItem('bibliokeeper_settings');
+        } catch (e) {
+          console.error('Error clearing localStorage:', e);
+        }
       }
     } catch (err) {
       console.error("Logout error:", err);
+      alert("Error signing out. Please try again.");
     }
-    setUser(null);
   };
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
+  if (authError) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-red-50">
+        <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-md">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Configuration Error</h2>
+          <p className="text-gray-600 mb-4">{authError}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return <LoginScreen onLogin={setUser} />;
   }
+
   return <LibraryApp user={user} onLogout={handleLogout} />;
 };
 
-export default Root;
+const App = () => (
+  <ErrorBoundary>
+    <Root />
+  </ErrorBoundary>
+);
+
+export default App;
