@@ -168,6 +168,8 @@ const LibraryApp = ({ user, onLogout }) => {
   const scanTimeoutRef = useRef(null);
   const isScanningRef = useRef(false);
   const streamRef = useRef(null);
+  const quaggaRef = useRef(null);
+  const quaggaOnDetectedRef = useRef(null);
   
   const [settings, setSettings] = useState(() => {
     try {
@@ -247,6 +249,30 @@ const LibraryApp = ({ user, onLogout }) => {
   const handleSearchQueryChange = useCallback((e) => setSearchQuery(e.target.value), []);
 
   // Open Library API function - using Books API with jscmd=data
+  const fetchAuthorName = async (authorEntry) => {
+    if (!authorEntry) return null;
+
+    if (authorEntry.name) {
+      return authorEntry.name;
+    }
+
+    if (authorEntry.key) {
+      try {
+        const response = await fetch(`https://openlibrary.org${authorEntry.key}.json`);
+        if (response.ok) {
+          const authorData = await response.json();
+          if (authorData?.name) {
+            return authorData.name;
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching author details from Open Library:', error);
+      }
+    }
+
+    return null;
+  };
+
   const fetchBookInfoFromAPI = async (isbn) => {
     setApiError(null);
     
@@ -272,8 +298,8 @@ const LibraryApp = ({ user, onLogout }) => {
         // Extract book information from Open Library data format
         const title = bookData.title || 'Unknown Title';
         const author = bookData.authors && bookData.authors.length > 0 
-          ? bookData.authors[0].name 
-          : 'Unknown Author';
+          ? await fetchAuthorName(bookData.authors[0]) || bookData.by_statement || 'Unknown Author' 
+          : bookData.by_statement || 'Unknown Author';
         const category = bookData.subjects && bookData.subjects.length > 0 
           ? bookData.subjects[0].name 
           : 'General';
@@ -295,19 +321,24 @@ const LibraryApp = ({ user, onLogout }) => {
         
         if (isbnData) {
           const title = isbnData.title || 'Unknown Title';
-          const author = isbnData.authors && isbnData.authors.length > 0
-            ? isbnData.authors[0].name
-            : (isbnData.by_statement || 'Unknown Author');
+          let author = isbnData.by_statement || 'Unknown Author';
+
+          if (isbnData.authors && isbnData.authors.length > 0) {
+            const resolvedAuthor = await fetchAuthorName(isbnData.authors[0]);
+            if (resolvedAuthor) {
+              author = resolvedAuthor;
+            }
+          }
           const category = isbnData.subjects && isbnData.subjects.length > 0
             ? isbnData.subjects[0]
             : 'General';
-          
+
           const bookInfo = { title, author, category };
           console.log('Successfully parsed book info from ISBN endpoint:', bookInfo);
           return bookInfo;
         }
       }
-      
+
       throw new Error('No book data found');
       
     } catch (error) {
@@ -400,10 +431,84 @@ const LibraryApp = ({ user, onLogout }) => {
   };
 
   // Manual scanning approach since BarcodeDetector has limited support
-  const startManualScanning = () => {
-    // For now, we'll rely on manual input
-    // In a real implementation, you could integrate a library like QuaggaJS or ZXing
-    console.log('Manual scanning mode - user will need to input barcode manually');
+  const startManualScanning = async () => {
+    if (!videoRef.current || typeof window === 'undefined') {
+      console.warn('Video element not ready for scanning; falling back to manual entry');
+      captureBarcode();
+      return;
+    }
+
+    try {
+      const importedQuagga = await import('quagga');
+      const quaggaInstance = importedQuagga?.default ?? importedQuagga;
+
+      if (!quaggaInstance || typeof quaggaInstance.init !== 'function') {
+        console.error('Quagga library did not load as expected:', importedQuagga);
+        alert('Automatic barcode detection is unavailable. Please enter the barcode manually.');
+        captureBarcode();
+        return;
+      }
+
+      if (quaggaRef.current && quaggaOnDetectedRef.current) {
+        try {
+          quaggaRef.current.offDetected(quaggaOnDetectedRef.current);
+        } catch (cleanupError) {
+          console.warn('Error removing previous Quagga handler:', cleanupError);
+        }
+        quaggaRef.current.stop();
+      }
+
+      quaggaRef.current = quaggaInstance;
+
+      quaggaInstance.init({
+        inputStream: {
+          name: 'Live',
+          type: 'LiveStream',
+          target: videoRef.current,
+          constraints: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        },
+        locator: {
+          patchSize: 'medium',
+          halfSample: true
+        },
+        decoder: {
+          readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'code_128_reader']
+        },
+        locate: true
+      }, (err) => {
+        if (err) {
+          console.error('Quagga initialization error:', err);
+          alert('Automatic barcode detection failed to start. Please use manual entry.');
+          captureBarcode();
+          return;
+        }
+
+        if (!isScanningRef.current) {
+          quaggaInstance.stop();
+          return;
+        }
+
+        quaggaInstance.start();
+      });
+
+      const onDetected = (data) => {
+        const detectedCode = data?.codeResult?.code;
+        if (detectedCode) {
+          handleBarcodeDetected(detectedCode);
+        }
+      };
+
+      quaggaInstance.onDetected(onDetected);
+      quaggaOnDetectedRef.current = onDetected;
+    } catch (error) {
+      console.error('Error loading Quagga for barcode scanning:', error);
+      alert('Automatic barcode detection is unavailable. Please enter the barcode manually.');
+      captureBarcode();
+    }
   };
 
   const handleBarcodeDetected = async (barcode) => {
@@ -474,6 +579,19 @@ const LibraryApp = ({ user, onLogout }) => {
       isScanningRef.current = false;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (quaggaRef.current) {
+        try {
+          if (quaggaOnDetectedRef.current) {
+            quaggaRef.current.offDetected(quaggaOnDetectedRef.current);
+          }
+          quaggaRef.current.stop();
+        } catch (error) {
+          console.error('Error stopping Quagga:', error);
+        } finally {
+          quaggaRef.current = null;
+          quaggaOnDetectedRef.current = null;
+        }
       }
     };
   }, []);
