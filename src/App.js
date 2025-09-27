@@ -163,10 +163,11 @@ const LibraryApp = ({ user, onLogout }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [scanningFor, setScanningFor] = useState(null);
   const [apiError, setApiError] = useState(null);
-  const [browserCompatWarning, setBrowserCompatWarning] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
   const videoRef = useRef(null);
   const scanTimeoutRef = useRef(null);
   const isScanningRef = useRef(false);
+  const streamRef = useRef(null);
   
   const [settings, setSettings] = useState(() => {
     try {
@@ -225,12 +226,6 @@ const LibraryApp = ({ user, onLogout }) => {
     }
   }, [settings]);
 
-  useEffect(() => {
-    if (!('BarcodeDetector' in window) && !browserCompatWarning) {
-      setBrowserCompatWarning(true);
-    }
-  }, [browserCompatWarning]);
-
   const generateId = (prefix) => {
     const timestamp = Date.now().toString(36);
     const random = Math.random().toString(36).substring(2, 7);
@@ -251,26 +246,73 @@ const LibraryApp = ({ user, onLogout }) => {
   const handleMemberScanInputChange = useCallback((e) => setMemberScanInput(e.target.value), []);
   const handleSearchQueryChange = useCallback((e) => setSearchQuery(e.target.value), []);
 
+  // Open Library API function - using Books API with jscmd=data
   const fetchBookInfoFromAPI = async (isbn) => {
+    setApiError(null);
+    
+    // Clean ISBN (remove hyphens, spaces)
+    const cleanISBN = isbn.replace(/[-\s]/g, '');
+    
     try {
-      setApiError(null);
-      const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+      console.log(`Fetching book info from Open Library for ISBN: ${cleanISBN}`);
+      
+      // Use Open Library Books API with jscmd=data for detailed information
+      const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${cleanISBN}&jscmd=data&format=json`);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch book information');
+        throw new Error(`API responded with status: ${response.status}`);
       }
+      
       const data = await response.json();
-      const bookData = data[`ISBN:${isbn}`];
+      console.log('Open Library API response:', data);
+      
+      const bookData = data[`ISBN:${cleanISBN}`];
+      
       if (bookData) {
-        return {
-          title: bookData.title || 'Unknown Title',
-          author: bookData.authors && bookData.authors.length > 0 ? bookData.authors[0].name : 'Unknown Author',
-          category: bookData.subjects && bookData.subjects.length > 0 ? bookData.subjects[0].name : 'General'
-        };
+        // Extract book information from Open Library data format
+        const title = bookData.title || 'Unknown Title';
+        const author = bookData.authors && bookData.authors.length > 0 
+          ? bookData.authors[0].name 
+          : 'Unknown Author';
+        const category = bookData.subjects && bookData.subjects.length > 0 
+          ? bookData.subjects[0].name 
+          : 'General';
+        
+        const bookInfo = { title, author, category };
+        console.log('Successfully parsed book info from Open Library:', bookInfo);
+        return bookInfo;
+      } else {
+        // Try the simpler ISBN endpoint as fallback
+        console.log('No data from Books API, trying ISBN endpoint...');
+        const isbnResponse = await fetch(`https://openlibrary.org/isbn/${cleanISBN}.json`);
+        
+        if (!isbnResponse.ok) {
+          throw new Error(`ISBN endpoint responded with status: ${isbnResponse.status}`);
+        }
+        
+        const isbnData = await isbnResponse.json();
+        console.log('ISBN endpoint response:', isbnData);
+        
+        if (isbnData) {
+          const title = isbnData.title || 'Unknown Title';
+          const author = isbnData.authors && isbnData.authors.length > 0
+            ? isbnData.authors[0].name
+            : (isbnData.by_statement || 'Unknown Author');
+          const category = isbnData.subjects && isbnData.subjects.length > 0
+            ? isbnData.subjects[0]
+            : 'General';
+          
+          const bookInfo = { title, author, category };
+          console.log('Successfully parsed book info from ISBN endpoint:', bookInfo);
+          return bookInfo;
+        }
       }
-      return null;
+      
+      throw new Error('No book data found');
+      
     } catch (error) {
-      console.error('Error fetching book info:', error);
-      setApiError('Could not fetch book information. Please enter details manually.');
+      console.error('Error with Open Library API:', error);
+      setApiError(`Could not find book information for ISBN: ${cleanISBN}. Please enter details manually.`);
       return null;
     }
   };
@@ -286,115 +328,101 @@ const LibraryApp = ({ user, onLogout }) => {
           category: bookInfo.category,
           quantity: 1
         });
-        alert(`Book information found and filled automatically!`);
+        alert(`Book information found and filled automatically!\nTitle: ${bookInfo.title}\nAuthor: ${bookInfo.author}`);
       } else {
         setNewBook(prev => ({ ...prev, isbn: isbn }));
-        alert(`ISBN detected: ${isbn}. Please fill in the remaining book details.`);
+        alert(`ISBN detected: ${isbn}\nCould not fetch book details automatically. Please fill in the remaining fields.`);
       }
     } catch (error) {
+      console.error('Error fetching book info:', error);
       setNewBook(prev => ({ ...prev, isbn: isbn }));
-      alert(`ISBN detected: ${isbn}. Could not fetch book details automatically.`);
+      alert(`ISBN detected: ${isbn}\nError fetching book details. Please fill in the remaining fields.`);
     }
   };
 
-  const startBarcodeScanning = (type) => {
+  // Improved camera scanning with better error handling
+  const startBarcodeScanning = async (type) => {
     setScanningFor(type);
     setIsScanning(true);
+    setCameraError(null);
     isScanningRef.current = true;
     
+    // Set timeout for scanning
     scanTimeoutRef.current = setTimeout(() => {
       stopBarcodeScanning();
-      alert('Scanning timed out. Please try manual entry.');
+      alert('Scanning timed out after 30 seconds. Please try manual entry.');
     }, 30000);
     
-    navigator.mediaDevices.getUserMedia({ 
-      video: { 
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      } 
-    })
-    .then(stream => {
+    try {
+      // Request camera permissions with better constraints
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: { ideal: 'environment' }, // Prefer back camera
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 }
+        } 
+      });
+      
       if (videoRef.current && isScanningRef.current) {
+        streamRef.current = stream;
         videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(e => console.error('Video play error:', e));
         
-        if ('BarcodeDetector' in window) {
-          startBarcodeDetection();
+        try {
+          await videoRef.current.play();
+          
+          // Start manual scanning since BarcodeDetector has limited support
+          startManualScanning();
+        } catch (playError) {
+          console.error('Video play error:', playError);
+          setCameraError("Could not start video playback. Please try again.");
+          stopBarcodeScanning();
         }
       } else {
         stream.getTracks().forEach(track => track.stop());
       }
-    })
-    .catch((err) => {
+    } catch (err) {
       console.error('Camera error:', err);
-      alert("Camera access denied or not available. Please use manual input.");
+      let errorMessage = "Camera access denied or not available.";
+      
+      if (err.name === 'NotAllowedError') {
+        errorMessage = "Camera access denied. Please allow camera permissions and try again.";
+      } else if (err.name === 'NotFoundError') {
+        errorMessage = "No camera found. Please connect a camera and try again.";
+      } else if (err.name === 'NotReadableError') {
+        errorMessage = "Camera is already in use by another application.";
+      }
+      
+      setCameraError(errorMessage);
       setIsScanning(false);
       isScanningRef.current = false;
       setScanningFor(null);
-    });
+    }
   };
 
-  const startBarcodeDetection = () => {
-    if (!('BarcodeDetector' in window)) {
-      return;
-    }
-
-    try {
-      const barcodeDetector = new window.BarcodeDetector();
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-
-      const detectBarcode = () => {
-        if (!videoRef.current || videoRef.current.readyState !== 4 || !isScanningRef.current) {
-          if (isScanningRef.current) {
-            setTimeout(detectBarcode, 100);
-          }
-          return;
-        }
-
-        canvas.width = videoRef.current.videoWidth;
-        canvas.height = videoRef.current.videoHeight;
-        context.drawImage(videoRef.current, 0, 0);
-
-        barcodeDetector.detect(canvas)
-          .then(barcodes => {
-            if (barcodes.length > 0 && isScanningRef.current) {
-              const barcode = barcodes[0].rawValue;
-              handleBarcodeDetected(barcode);
-            } else if (isScanningRef.current) {
-              requestAnimationFrame(detectBarcode);
-            }
-          })
-          .catch((err) => {
-            console.error('Barcode detection error:', err);
-            if (isScanningRef.current) {
-              setTimeout(detectBarcode, 500);
-            }
-          });
-      };
-
-      detectBarcode();
-    } catch (err) {
-      console.error('BarcodeDetector initialization error:', err);
-      alert('Barcode detection is not supported in this browser. Please use manual input.');
-      stopBarcodeScanning();
-    }
+  // Manual scanning approach since BarcodeDetector has limited support
+  const startManualScanning = () => {
+    // For now, we'll rely on manual input
+    // In a real implementation, you could integrate a library like QuaggaJS or ZXing
+    console.log('Manual scanning mode - user will need to input barcode manually');
   };
 
   const handleBarcodeDetected = async (barcode) => {
+    if (!barcode || !barcode.trim()) return;
+    
+    const cleanBarcode = barcode.trim();
+    
     if (scanningFor === 'book') {
-      setScanInput(barcode);
-      const existingBook = findBook(barcode);
-      if (!existingBook && barcode.length >= 10) {
+      setScanInput(cleanBarcode);
+      const existingBook = findBook(cleanBarcode);
+      if (!existingBook && cleanBarcode.length >= 10) {
         try {
-          const bookInfo = await fetchBookInfoFromAPI(barcode);
+          const bookInfo = await fetchBookInfoFromAPI(cleanBarcode);
           if (bookInfo) {
             const newBookEntry = {
               id: generateId('B'),
               title: bookInfo.title,
               author: bookInfo.author,
-              isbn: barcode,
+              isbn: cleanBarcode,
               category: bookInfo.category || 'General',
               available: 1,
               total: 1
@@ -407,13 +435,13 @@ const LibraryApp = ({ user, onLogout }) => {
         }
       }
     } else if (scanningFor === 'member') {
-      setMemberScanInput(barcode);
+      setMemberScanInput(cleanBarcode);
     } else if (scanningFor === 'isbn') {
-      await fetchBookInfoFromISBN(barcode);
+      await fetchBookInfoFromISBN(cleanBarcode);
     }
     
     stopBarcodeScanning();
-    alert(`Barcode detected: ${barcode}`);
+    alert(`Barcode detected: ${cleanBarcode}`);
   };
 
   const stopBarcodeScanning = () => {
@@ -424,13 +452,18 @@ const LibraryApp = ({ user, onLogout }) => {
     
     isScanningRef.current = false;
     
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject;
-      stream.getTracks().forEach(track => track.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    
     setIsScanning(false);
     setScanningFor(null);
+    setCameraError(null);
   };
 
   useEffect(() => {
@@ -439,9 +472,8 @@ const LibraryApp = ({ user, onLogout }) => {
         clearTimeout(scanTimeoutRef.current);
       }
       isScanningRef.current = false;
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject;
-        stream.getTracks().forEach(track => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
       }
     };
   }, []);
@@ -761,19 +793,18 @@ const LibraryApp = ({ user, onLogout }) => {
             </h3>
             <p className="text-gray-600">
               {scanningFor === 'isbn' 
-                ? 'Point camera at book barcode to auto-fill details'
-                : 'Point camera at barcode'
+                ? 'Position barcode clearly in view and click "Manual Entry" to input the code'
+                : 'Position barcode clearly in view and click "Manual Entry" to input the code'
               }
             </p>
-            {'BarcodeDetector' in window ? (
-              <p className="text-sm text-green-600 mt-2">Real-time barcode detection active</p>
-            ) : (
-              <div>
-                <p className="text-sm text-orange-600 mt-2">Manual capture mode - position barcode and click capture</p>
-                <p className="text-xs text-gray-500 mt-1">Note: Your browser doesn't support automatic barcode detection</p>
-              </div>
-            )}
+            <p className="text-sm text-orange-600 mt-2">Camera ready - click "Manual Entry" to input barcode</p>
           </div>
+          
+          {cameraError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700 text-sm">{cameraError}</p>
+            </div>
+          )}
           
           <div className="relative mb-4">
             <video 
@@ -790,20 +821,12 @@ const LibraryApp = ({ user, onLogout }) => {
           </div>
           
           <div className="flex gap-3">
-            {'BarcodeDetector' in window ? (
-              <button onClick={stopBarcodeScanning} className="w-full bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold transition-colors">
-                Cancel
-              </button>
-            ) : (
-              <>
-                <button onClick={captureBarcode} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-semibold transition-colors">
-                  Manual Entry
-                </button>
-                <button onClick={stopBarcodeScanning} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold transition-colors">
-                  Cancel
-                </button>
-              </>
-            )}
+            <button onClick={captureBarcode} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-semibold transition-colors">
+              Manual Entry
+            </button>
+            <button onClick={stopBarcodeScanning} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold transition-colors">
+              Cancel
+            </button>
           </div>
         </div>
       </div>
@@ -813,10 +836,10 @@ const LibraryApp = ({ user, onLogout }) => {
   const MainScreen = () => (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
       <div className="max-w-6xl mx-auto">
-        {browserCompatWarning && !('BarcodeDetector' in window) && (
+        {apiError && (
           <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-6 text-sm">
             <AlertCircle className="inline w-4 h-4 mr-2" />
-            Your browser doesn't support automatic barcode scanning. You can still use manual entry or try Chrome/Edge browser for the best experience.
+            {apiError}
           </div>
         )}
         
