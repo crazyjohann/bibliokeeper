@@ -164,10 +164,15 @@ const LibraryApp = ({ user, onLogout }) => {
   const [scanningFor, setScanningFor] = useState(null);
   const [apiError, setApiError] = useState(null);
   const [cameraError, setCameraError] = useState(null);
+  const [isLoadingBookData, setIsLoadingBookData] = useState(false);
+  const [lastScannedBarcode, setLastScannedBarcode] = useState(null);
+  
   const videoRef = useRef(null);
   const scanTimeoutRef = useRef(null);
   const isScanningRef = useRef(false);
   const streamRef = useRef(null);
+  const quaggaRef = useRef(null);
+  const quaggaOnDetectedRef = useRef(null);
   
   const [settings, setSettings] = useState(() => {
     try {
@@ -246,18 +251,55 @@ const LibraryApp = ({ user, onLogout }) => {
   const handleMemberScanInputChange = useCallback((e) => setMemberScanInput(e.target.value), []);
   const handleSearchQueryChange = useCallback((e) => setSearchQuery(e.target.value), []);
 
-  // Open Library API function - using Books API with jscmd=data
+  // Enhanced Open Library API with robust error handling
+  const fetchAuthorName = async (authorEntry) => {
+    if (!authorEntry) return null;
+
+    // Handle direct name
+    if (authorEntry.name) {
+      return authorEntry.name;
+    }
+
+    // Handle author key reference
+    if (authorEntry.key) {
+      try {
+        const response = await fetch(`https://openlibrary.org${authorEntry.key}.json`);
+        if (response.ok) {
+          const authorData = await response.json();
+          if (authorData?.name) {
+            return authorData.name;
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching author details from Open Library:', error);
+      }
+    }
+
+    return null;
+  };
+
+  const cleanISBN = (isbn) => {
+    // Remove all non-digit characters except X (for ISBN-10)
+    return isbn.replace(/[^0-9X]/gi, '').toUpperCase();
+  };
+
   const fetchBookInfoFromAPI = async (isbn) => {
     setApiError(null);
+    setIsLoadingBookData(true);
     
-    // Clean ISBN (remove hyphens, spaces)
-    const cleanISBN = isbn.replace(/[-\s]/g, '');
+    const cleanedISBN = cleanISBN(isbn);
+    
+    if (cleanedISBN.length < 10) {
+      setApiError(`Invalid ISBN length: ${cleanedISBN}. Please try again.`);
+      setIsLoadingBookData(false);
+      return null;
+    }
     
     try {
-      console.log(`Fetching book info from Open Library for ISBN: ${cleanISBN}`);
+      console.log(`Fetching book info from Open Library for ISBN: ${cleanedISBN}`);
       
-      // Use Open Library Books API with jscmd=data for detailed information
-      const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${cleanISBN}&jscmd=data&format=json`);
+      // Primary endpoint: Books API
+      const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${cleanedISBN}&jscmd=data&format=json`);
       
       if (!response.ok) {
         throw new Error(`API responded with status: ${response.status}`);
@@ -266,25 +308,31 @@ const LibraryApp = ({ user, onLogout }) => {
       const data = await response.json();
       console.log('Open Library API response:', data);
       
-      const bookData = data[`ISBN:${cleanISBN}`];
+      const bookData = data[`ISBN:${cleanedISBN}`];
       
       if (bookData) {
-        // Extract book information from Open Library data format
         const title = bookData.title || 'Unknown Title';
-        const author = bookData.authors && bookData.authors.length > 0 
-          ? bookData.authors[0].name 
-          : 'Unknown Author';
+        
+        let author = 'Unknown Author';
+        if (bookData.authors && bookData.authors.length > 0) {
+          const resolvedAuthor = await fetchAuthorName(bookData.authors[0]);
+          author = resolvedAuthor || bookData.by_statement || 'Unknown Author';
+        } else if (bookData.by_statement) {
+          author = bookData.by_statement;
+        }
+        
         const category = bookData.subjects && bookData.subjects.length > 0 
           ? bookData.subjects[0].name 
           : 'General';
         
         const bookInfo = { title, author, category };
-        console.log('Successfully parsed book info from Open Library:', bookInfo);
+        console.log('Successfully parsed book info from Books API:', bookInfo);
+        setIsLoadingBookData(false);
         return bookInfo;
       } else {
-        // Try the simpler ISBN endpoint as fallback
+        // Fallback: ISBN endpoint
         console.log('No data from Books API, trying ISBN endpoint...');
-        const isbnResponse = await fetch(`https://openlibrary.org/isbn/${cleanISBN}.json`);
+        const isbnResponse = await fetch(`https://openlibrary.org/isbn/${cleanedISBN}.json`);
         
         if (!isbnResponse.ok) {
           throw new Error(`ISBN endpoint responded with status: ${isbnResponse.status}`);
@@ -295,69 +343,60 @@ const LibraryApp = ({ user, onLogout }) => {
         
         if (isbnData) {
           const title = isbnData.title || 'Unknown Title';
-          const author = isbnData.authors && isbnData.authors.length > 0
-            ? isbnData.authors[0].name
-            : (isbnData.by_statement || 'Unknown Author');
+          let author = isbnData.by_statement || 'Unknown Author';
+
+          if (isbnData.authors && isbnData.authors.length > 0) {
+            const resolvedAuthor = await fetchAuthorName(isbnData.authors[0]);
+            if (resolvedAuthor) {
+              author = resolvedAuthor;
+            }
+          }
+          
           const category = isbnData.subjects && isbnData.subjects.length > 0
             ? isbnData.subjects[0]
             : 'General';
-          
+
           const bookInfo = { title, author, category };
           console.log('Successfully parsed book info from ISBN endpoint:', bookInfo);
+          setIsLoadingBookData(false);
           return bookInfo;
         }
       }
-      
+
       throw new Error('No book data found');
       
     } catch (error) {
       console.error('Error with Open Library API:', error);
-      setApiError(`Could not find book information for ISBN: ${cleanISBN}. Please enter details manually.`);
+      setApiError(`Could not find book information for ISBN: ${cleanedISBN}. Please enter details manually.`);
+      setIsLoadingBookData(false);
       return null;
     }
   };
 
-  const fetchBookInfoFromISBN = async (isbn) => {
-    try {
-      const bookInfo = await fetchBookInfoFromAPI(isbn);
-      if (bookInfo) {
-        setNewBook({
-          title: bookInfo.title,
-          author: bookInfo.author,
-          isbn: isbn,
-          category: bookInfo.category,
-          quantity: 1
-        });
-        alert(`Book information found and filled automatically!\nTitle: ${bookInfo.title}\nAuthor: ${bookInfo.author}`);
-      } else {
-        setNewBook(prev => ({ ...prev, isbn: isbn }));
-        alert(`ISBN detected: ${isbn}\nCould not fetch book details automatically. Please fill in the remaining fields.`);
-      }
-    } catch (error) {
-      console.error('Error fetching book info:', error);
-      setNewBook(prev => ({ ...prev, isbn: isbn }));
-      alert(`ISBN detected: ${isbn}\nError fetching book details. Please fill in the remaining fields.`);
-    }
-  };
-
-  // Improved camera scanning with better error handling
+  // Working barcode scanning with Quagga.js
   const startBarcodeScanning = async (type) => {
     setScanningFor(type);
     setIsScanning(true);
     setCameraError(null);
+    setApiError(null);
     isScanningRef.current = true;
+    setLastScannedBarcode(null);
+    
+    // Clear form when starting ISBN scan
+    if (type === 'isbn') {
+      setNewBook({ title: '', author: '', isbn: '', category: '', quantity: 1 });
+    }
     
     // Set timeout for scanning
     scanTimeoutRef.current = setTimeout(() => {
       stopBarcodeScanning();
-      alert('Scanning timed out after 30 seconds. Please try manual entry.');
+      alert('Scanning timed out after 30 seconds. Please try again.');
     }, 30000);
     
     try {
-      // Request camera permissions with better constraints
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
-          facingMode: { ideal: 'environment' }, // Prefer back camera
+          facingMode: { ideal: 'environment' },
           width: { ideal: 1280, min: 640 },
           height: { ideal: 720, min: 480 }
         } 
@@ -369,9 +408,7 @@ const LibraryApp = ({ user, onLogout }) => {
         
         try {
           await videoRef.current.play();
-          
-          // Start manual scanning since BarcodeDetector has limited support
-          startManualScanning();
+          startQuaggaScanning();
         } catch (playError) {
           console.error('Video play error:', playError);
           setCameraError("Could not start video playback. Please try again.");
@@ -399,17 +436,114 @@ const LibraryApp = ({ user, onLogout }) => {
     }
   };
 
-  // Manual scanning approach since BarcodeDetector has limited support
-  const startManualScanning = () => {
-    // For now, we'll rely on manual input
-    // In a real implementation, you could integrate a library like QuaggaJS or ZXing
-    console.log('Manual scanning mode - user will need to input barcode manually');
+  const startQuaggaScanning = async () => {
+    if (!videoRef.current || typeof window === 'undefined') {
+      console.warn('Video element not ready for scanning');
+      stopBarcodeScanning();
+      return;
+    }
+
+    try {
+      // Load Quagga from CDN
+      if (!window.Quagga) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      const Quagga = window.Quagga;
+
+      if (!Quagga || typeof Quagga.init !== 'function') {
+        console.error('Quagga library did not load correctly');
+        setCameraError('Barcode detection library failed to load. Please refresh and try again.');
+        stopBarcodeScanning();
+        return;
+      }
+
+      // Stop any existing Quagga instance
+      if (quaggaRef.current && quaggaOnDetectedRef.current) {
+        try {
+          quaggaRef.current.offDetected(quaggaOnDetectedRef.current);
+          quaggaRef.current.stop();
+        } catch (cleanupError) {
+          console.warn('Error cleaning up previous Quagga instance:', cleanupError);
+        }
+      }
+
+      quaggaRef.current = Quagga;
+
+      Quagga.init({
+        inputStream: {
+          name: 'Live',
+          type: 'LiveStream',
+          target: videoRef.current,
+          constraints: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        },
+        locator: {
+          patchSize: 'medium',
+          halfSample: true
+        },
+        decoder: {
+          readers: [
+            'ean_reader',
+            'ean_8_reader', 
+            'upc_reader',
+            'upc_e_reader',
+            'code_128_reader',
+            'code_39_reader'
+          ]
+        },
+        locate: true,
+        debug: false
+      }, (err) => {
+        if (err) {
+          console.error('Quagga initialization error:', err);
+          setCameraError('Barcode detection failed to initialize. Please try again.');
+          stopBarcodeScanning();
+          return;
+        }
+
+        if (!isScanningRef.current) {
+          Quagga.stop();
+          return;
+        }
+
+        Quagga.start();
+        console.log('Quagga started successfully');
+      });
+
+      const onDetected = (data) => {
+        const detectedCode = data?.codeResult?.code;
+        if (detectedCode && detectedCode !== lastScannedBarcode) {
+          console.log('Barcode detected:', detectedCode);
+          setLastScannedBarcode(detectedCode);
+          handleBarcodeDetected(detectedCode);
+        }
+      };
+
+      Quagga.onDetected(onDetected);
+      quaggaOnDetectedRef.current = onDetected;
+
+    } catch (error) {
+      console.error('Error loading Quagga for barcode scanning:', error);
+      setCameraError('Barcode detection is unavailable. Please refresh the page and try again.');
+      stopBarcodeScanning();
+    }
   };
 
   const handleBarcodeDetected = async (barcode) => {
     if (!barcode || !barcode.trim()) return;
     
     const cleanBarcode = barcode.trim();
+    console.log('Processing barcode:', cleanBarcode);
     
     if (scanningFor === 'book') {
       setScanInput(cleanBarcode);
@@ -428,7 +562,9 @@ const LibraryApp = ({ user, onLogout }) => {
               total: 1
             };
             setBooks(prev => [...prev, newBookEntry]);
+            stopBarcodeScanning();
             alert(`New book "${bookInfo.title}" by ${bookInfo.author} added to library automatically!`);
+            return;
           }
         } catch (error) {
           console.error('Error auto-adding book:', error);
@@ -437,7 +573,24 @@ const LibraryApp = ({ user, onLogout }) => {
     } else if (scanningFor === 'member') {
       setMemberScanInput(cleanBarcode);
     } else if (scanningFor === 'isbn') {
-      await fetchBookInfoFromISBN(cleanBarcode);
+      const bookInfo = await fetchBookInfoFromAPI(cleanBarcode);
+      if (bookInfo) {
+        setNewBook({
+          title: bookInfo.title,
+          author: bookInfo.author,
+          isbn: cleanBarcode,
+          category: bookInfo.category,
+          quantity: 1
+        });
+        stopBarcodeScanning();
+        alert(`Book information found and auto-filled!\nTitle: ${bookInfo.title}\nAuthor: ${bookInfo.author}`);
+        return;
+      } else {
+        setNewBook(prev => ({ ...prev, isbn: cleanBarcode }));
+        stopBarcodeScanning();
+        alert(`ISBN detected: ${cleanBarcode}\nCould not fetch book details automatically. Please fill in the remaining fields.`);
+        return;
+      }
     }
     
     stopBarcodeScanning();
@@ -445,6 +598,8 @@ const LibraryApp = ({ user, onLogout }) => {
   };
 
   const stopBarcodeScanning = () => {
+    console.log('Stopping barcode scanning');
+    
     if (scanTimeoutRef.current) {
       clearTimeout(scanTimeoutRef.current);
       scanTimeoutRef.current = null;
@@ -452,6 +607,22 @@ const LibraryApp = ({ user, onLogout }) => {
     
     isScanningRef.current = false;
     
+    // Stop Quagga
+    if (quaggaRef.current) {
+      try {
+        if (quaggaOnDetectedRef.current) {
+          quaggaRef.current.offDetected(quaggaOnDetectedRef.current);
+        }
+        quaggaRef.current.stop();
+      } catch (error) {
+        console.error('Error stopping Quagga:', error);
+      } finally {
+        quaggaRef.current = null;
+        quaggaOnDetectedRef.current = null;
+      }
+    }
+    
+    // Stop camera stream
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -464,6 +635,7 @@ const LibraryApp = ({ user, onLogout }) => {
     setIsScanning(false);
     setScanningFor(null);
     setCameraError(null);
+    setIsLoadingBookData(false);
   };
 
   useEffect(() => {
@@ -475,17 +647,21 @@ const LibraryApp = ({ user, onLogout }) => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
+      if (quaggaRef.current) {
+        try {
+          if (quaggaOnDetectedRef.current) {
+            quaggaRef.current.offDetected(quaggaOnDetectedRef.current);
+          }
+          quaggaRef.current.stop();
+        } catch (error) {
+          console.error('Error stopping Quagga during cleanup:', error);
+        } finally {
+          quaggaRef.current = null;
+          quaggaOnDetectedRef.current = null;
+        }
+      }
     };
   }, []);
-
-  const captureBarcode = () => {
-    const userInput = prompt('Please enter the barcode/ISBN manually:');
-    if (userInput && userInput.trim()) {
-      handleBarcodeDetected(userInput.trim());
-    } else {
-      stopBarcodeScanning();
-    }
-  };
 
   const calculateDueDate = (loanDate, days = settings.loanPeriodDays) => {
     const date = new Date(loanDate);
@@ -792,12 +968,14 @@ const LibraryApp = ({ user, onLogout }) => {
               {scanningFor === 'isbn' ? 'Scanning Book ISBN' : `Scanning for ${scanningFor}`}
             </h3>
             <p className="text-gray-600">
-              {scanningFor === 'isbn' 
-                ? 'Position barcode clearly in view and click "Manual Entry" to input the code'
-                : 'Position barcode clearly in view and click "Manual Entry" to input the code'
-              }
+              Position barcode clearly in camera view
             </p>
-            <p className="text-sm text-orange-600 mt-2">Camera ready - click "Manual Entry" to input barcode</p>
+            {isLoadingBookData && (
+              <p className="text-sm text-blue-600 mt-2">Loading book information...</p>
+            )}
+            {!isLoadingBookData && (
+              <p className="text-sm text-green-600 mt-2">Camera ready - point at barcode</p>
+            )}
           </div>
           
           {cameraError && (
@@ -821,11 +999,12 @@ const LibraryApp = ({ user, onLogout }) => {
           </div>
           
           <div className="flex gap-3">
-            <button onClick={captureBarcode} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-semibold transition-colors">
-              Manual Entry
-            </button>
-            <button onClick={stopBarcodeScanning} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold transition-colors">
-              Cancel
+            <button 
+              onClick={stopBarcodeScanning} 
+              className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold transition-colors"
+              disabled={isLoadingBookData}
+            >
+              {isLoadingBookData ? 'Processing...' : 'Cancel'}
             </button>
           </div>
         </div>
