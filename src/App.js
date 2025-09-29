@@ -1312,12 +1312,32 @@ const LibraryApp = ({ user, onLogout }) => {
                     
                     <div>
                       <div className="flex">
-                        <input type="text" value={newBook.isbn} onChange={(e) => setNewBook({...newBook, isbn: e.target.value})} placeholder="ISBN *" className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                        <button onClick={() => startBarcodeScanning('isbn')} className="px-4 py-3 bg-orange-500 text-white border border-orange-500 rounded-r-lg hover:bg-orange-600" title="Scan ISBN barcode">
+                        <input 
+                          type="text" 
+                          value={newBook.isbn} 
+                          onChange={(e) => setNewBook({...newBook, isbn: e.target.value})} 
+                          onBlur={async (e) => {
+                            const isbn = e.target.value.trim();
+                            if (isbn.length >= 10 && !newBook.title && !newBook.author) {
+                              const bookInfo = await fetchBookInfoFromAPI(isbn);
+                              if (bookInfo) {
+                                setNewBook(prev => ({
+                                  ...prev,
+                                  title: bookInfo.title,
+                                  author: bookInfo.author,
+                                  category: bookInfo.category
+                                }));
+                              }
+                            }
+                          }}
+                          placeholder="ISBN *" 
+                          className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-orange-500" 
+                        />
+                        <button onClick={() => startBarcodeScanning('isbn')} className="px-4 py-3 bg-orange-500 text-white border border-orange-500 rounded-r-lg hover:bg-orange-600" title="Scan ISBN barcode with webcam">
                           <Camera className="w-5 h-5" />
                         </button>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">Scan ISBN barcode to auto-fill book details</p>
+                      <p className="text-xs text-gray-500 mt-1">Scan with your barcode scanner or use webcam. Book details auto-fill when you tab out.</p>
                     </div>
                     
                     <select value={newBook.category} onChange={(e) => setNewBook({...newBook, category: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
