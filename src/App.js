@@ -12,6 +12,9 @@ const firebaseConfig = {
   appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:771697995545:web:c23b431eb9321dbd49df88"
 };
 
+// Google Books API Key
+const GOOGLE_BOOKS_API_KEY = "AIzaSyCeJLBYthkoyaMckgTT0vnoZ_slIXYrvC4";
+
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -251,38 +254,11 @@ const LibraryApp = ({ user, onLogout }) => {
   const handleMemberScanInputChange = useCallback((e) => setMemberScanInput(e.target.value), []);
   const handleSearchQueryChange = useCallback((e) => setSearchQuery(e.target.value), []);
 
-  // Enhanced Open Library API with robust error handling
-  const fetchAuthorName = async (authorEntry) => {
-    if (!authorEntry) return null;
-
-    // Handle direct name
-    if (authorEntry.name) {
-      return authorEntry.name;
-    }
-
-    // Handle author key reference
-    if (authorEntry.key) {
-      try {
-        const response = await fetch(`https://openlibrary.org${authorEntry.key}.json`);
-        if (response.ok) {
-          const authorData = await response.json();
-          if (authorData?.name) {
-            return authorData.name;
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching author details from Open Library:', error);
-      }
-    }
-
-    return null;
-  };
-
   const cleanISBN = (isbn) => {
-    // Remove all non-digit characters except X (for ISBN-10)
     return isbn.replace(/[^0-9X]/gi, '').toUpperCase();
   };
 
+  // REPLACED: Google Books API instead of Open Library
   const fetchBookInfoFromAPI = async (isbn) => {
     setApiError(null);
     setIsLoadingBookData(true);
@@ -296,77 +272,39 @@ const LibraryApp = ({ user, onLogout }) => {
     }
     
     try {
-      console.log(`Fetching book info from Open Library for ISBN: ${cleanedISBN}`);
+      console.log(`Fetching book info from Google Books for ISBN: ${cleanedISBN}`);
       
-      // Primary endpoint: Books API
-      const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${cleanedISBN}&jscmd=data&format=json`);
+      const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanedISBN}&key=${GOOGLE_BOOKS_API_KEY}`;
+      const response = await fetch(url);
       
       if (!response.ok) {
-        throw new Error(`API responded with status: ${response.status}`);
+        throw new Error(`Google Books API responded with status: ${response.status}`);
       }
       
       const data = await response.json();
-      console.log('Open Library API response:', data);
+      console.log('Google Books API response:', data);
       
-      const bookData = data[`ISBN:${cleanedISBN}`];
-      
-      if (bookData) {
-        const title = bookData.title || 'Unknown Title';
+      if (data.items && data.items.length > 0) {
+        const book = data.items[0].volumeInfo;
         
-        let author = 'Unknown Author';
-        if (bookData.authors && bookData.authors.length > 0) {
-          const resolvedAuthor = await fetchAuthorName(bookData.authors[0]);
-          author = resolvedAuthor || bookData.by_statement || 'Unknown Author';
-        } else if (bookData.by_statement) {
-          author = bookData.by_statement;
-        }
-        
-        const category = bookData.subjects && bookData.subjects.length > 0 
-          ? bookData.subjects[0].name 
+        const title = book.title || 'Unknown Title';
+        const author = book.authors && book.authors.length > 0 
+          ? book.authors.join(', ') 
+          : 'Unknown Author';
+        const category = book.categories && book.categories.length > 0 
+          ? book.categories[0] 
           : 'General';
         
         const bookInfo = { title, author, category };
-        console.log('Successfully parsed book info from Books API:', bookInfo);
+        console.log('Successfully parsed book info from Google Books:', bookInfo);
         setIsLoadingBookData(false);
         return bookInfo;
-      } else {
-        // Fallback: ISBN endpoint
-        console.log('No data from Books API, trying ISBN endpoint...');
-        const isbnResponse = await fetch(`https://openlibrary.org/isbn/${cleanedISBN}.json`);
-        
-        if (!isbnResponse.ok) {
-          throw new Error(`ISBN endpoint responded with status: ${isbnResponse.status}`);
-        }
-        
-        const isbnData = await isbnResponse.json();
-        console.log('ISBN endpoint response:', isbnData);
-        
-        if (isbnData) {
-          const title = isbnData.title || 'Unknown Title';
-          let author = isbnData.by_statement || 'Unknown Author';
-
-          if (isbnData.authors && isbnData.authors.length > 0) {
-            const resolvedAuthor = await fetchAuthorName(isbnData.authors[0]);
-            if (resolvedAuthor) {
-              author = resolvedAuthor;
-            }
-          }
-          
-          const category = isbnData.subjects && isbnData.subjects.length > 0
-            ? isbnData.subjects[0]
-            : 'General';
-
-          const bookInfo = { title, author, category };
-          console.log('Successfully parsed book info from ISBN endpoint:', bookInfo);
-          setIsLoadingBookData(false);
-          return bookInfo;
-        }
       }
 
-      throw new Error('No book data found');
+      throw new Error('No book data found in Google Books');
       
     } catch (error) {
-      console.error('Error with Open Library API:', error);
+      console.error('Error with Google Books API:', error);
       setApiError(`Could not find book information for ISBN: ${cleanedISBN}. Please enter details manually.`);
       setIsLoadingBookData(false);
       return null;
@@ -382,12 +320,10 @@ const LibraryApp = ({ user, onLogout }) => {
     isScanningRef.current = true;
     setLastScannedBarcode(null);
     
-    // Clear form when starting ISBN scan
     if (type === 'isbn') {
       setNewBook({ title: '', author: '', isbn: '', category: '', quantity: 1 });
     }
     
-    // Set timeout for scanning
     scanTimeoutRef.current = setTimeout(() => {
       stopBarcodeScanning();
       alert('Scanning timed out after 30 seconds. Please try again.');
@@ -444,7 +380,6 @@ const LibraryApp = ({ user, onLogout }) => {
     }
 
     try {
-      // Load Quagga from CDN
       if (!window.Quagga) {
         await new Promise((resolve, reject) => {
           const script = document.createElement('script');
@@ -464,7 +399,6 @@ const LibraryApp = ({ user, onLogout }) => {
         return;
       }
 
-      // Stop any existing Quagga instance
       if (quaggaRef.current && quaggaOnDetectedRef.current) {
         try {
           quaggaRef.current.offDetected(quaggaOnDetectedRef.current);
@@ -607,7 +541,6 @@ const LibraryApp = ({ user, onLogout }) => {
     
     isScanningRef.current = false;
     
-    // Stop Quagga
     if (quaggaRef.current) {
       try {
         if (quaggaOnDetectedRef.current) {
@@ -622,7 +555,6 @@ const LibraryApp = ({ user, onLogout }) => {
       }
     }
     
-    // Stop camera stream
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -1337,7 +1269,7 @@ const LibraryApp = ({ user, onLogout }) => {
                           <Camera className="w-5 h-5" />
                         </button>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">Scan with your barcode scanner or use webcam. Book details auto-fill when you tab out.</p>
+                      <p className="text-xs text-gray-500 mt-1">Scan with barcode scanner or webcam. Auto-fills when you tab out.</p>
                     </div>
                     
                     <select value={newBook.category} onChange={(e) => setNewBook({...newBook, category: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
