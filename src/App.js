@@ -1,44 +1,4 @@
-const importSpreadsheet = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    
-    try {
-      // Load SheetJS from CDN if not already loaded
-      if (!window.XLSX) {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
-      
-      const XLSX = window.XLSX;
-      
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
-      
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
-      
-      if (rows.length === 0) {
-        alert('Spreadsheet is empty or could not be read.');
-        return;
-      }
-      
-      let newBooksAdded = 0;
-      let duplicatesSkipped = 0;
-      let booksWithoutISBN = 0;
-      
-      const newBooks = [];
-      
-      rows.forEach((row, index) => {
-        try {
-          // Get all possible values for each field
-          const isbnRaw = row['ISBN'] || row['\'ISBN\''] || row['isbn'] || row['Isbn'] || row['Primary ISBN'] || '';
-          const titleRaw = row['TITLE'] || row['Title'] || row['title'] || row['BOOK TITLE'] || '';
-          const authorRaw = row['AUTHORimport React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell, AlertCircle } from 'lucide-react';
@@ -291,35 +251,24 @@ const LibraryApp = ({ user, onLogout }) => {
   const handleMemberScanInputChange = useCallback((e) => setMemberScanInput(e.target.value), []);
   const handleSearchQueryChange = useCallback((e) => setSearchQuery(e.target.value), []);
 
-  // Enhanced Open Library API with robust error handling
   const fetchAuthorName = async (authorEntry) => {
     if (!authorEntry) return null;
-
-    // Handle direct name
-    if (authorEntry.name) {
-      return authorEntry.name;
-    }
-
-    // Handle author key reference
+    if (authorEntry.name) return authorEntry.name;
     if (authorEntry.key) {
       try {
         const response = await fetch(`https://openlibrary.org${authorEntry.key}.json`);
         if (response.ok) {
           const authorData = await response.json();
-          if (authorData?.name) {
-            return authorData.name;
-          }
+          if (authorData?.name) return authorData.name;
         }
       } catch (error) {
         console.error('Error fetching author details from Open Library:', error);
       }
     }
-
     return null;
   };
 
   const cleanISBN = (isbn) => {
-    // Remove all non-digit characters except X (for ISBN-10)
     return isbn.replace(/[^0-9X]/gi, '').toUpperCase();
   };
 
@@ -338,7 +287,6 @@ const LibraryApp = ({ user, onLogout }) => {
     try {
       console.log(`Fetching book info from Open Library for ISBN: ${cleanedISBN}`);
       
-      // Primary endpoint: Books API
       const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${cleanedISBN}&jscmd=data&format=json`);
       
       if (!response.ok) {
@@ -370,7 +318,6 @@ const LibraryApp = ({ user, onLogout }) => {
         setIsLoadingBookData(false);
         return bookInfo;
       } else {
-        // Fallback: ISBN endpoint
         console.log('No data from Books API, trying ISBN endpoint...');
         const isbnResponse = await fetch(`https://openlibrary.org/isbn/${cleanedISBN}.json`);
         
@@ -413,7 +360,6 @@ const LibraryApp = ({ user, onLogout }) => {
     }
   };
 
-  // Working barcode scanning with Quagga.js
   const startBarcodeScanning = async (type) => {
     setScanningFor(type);
     setIsScanning(true);
@@ -422,25 +368,21 @@ const LibraryApp = ({ user, onLogout }) => {
     isScanningRef.current = true;
     setLastScannedBarcode(null);
     
-    // Clear form when starting ISBN scan
     if (type === 'isbn') {
       setNewBook({ title: '', author: '', isbn: '', category: '', quantity: 1 });
     }
     
-    // Set timeout for scanning
     scanTimeoutRef.current = setTimeout(() => {
       stopBarcodeScanning();
       alert('Scanning timed out after 30 seconds. Please try again.');
     }, 30000);
     
     try {
-      // Check if camera exists first
       const devices = await navigator.mediaDevices.enumerateDevices();
       const hasCamera = devices.some(device => device.kind === 'videoinput');
       
       if (!hasCamera) {
         setCameraError("No webcam detected. Please use your physical USB barcode scanner by typing/scanning directly into the input field, then press Tab.");
-        // Don't close modal - let user read the message and close manually
         return;
       }
       
@@ -479,7 +421,6 @@ const LibraryApp = ({ user, onLogout }) => {
       }
       
       setCameraError(errorMessage);
-      // Don't close modal automatically
     }
   };
 
@@ -491,7 +432,6 @@ const LibraryApp = ({ user, onLogout }) => {
     }
 
     try {
-      // Load Quagga from CDN
       if (!window.Quagga) {
         await new Promise((resolve, reject) => {
           const script = document.createElement('script');
@@ -511,7 +451,6 @@ const LibraryApp = ({ user, onLogout }) => {
         return;
       }
 
-      // Stop any existing Quagga instance
       if (quaggaRef.current && quaggaOnDetectedRef.current) {
         try {
           quaggaRef.current.offDetected(quaggaOnDetectedRef.current);
@@ -654,7 +593,6 @@ const LibraryApp = ({ user, onLogout }) => {
     
     isScanningRef.current = false;
     
-    // Stop Quagga
     if (quaggaRef.current) {
       try {
         if (quaggaOnDetectedRef.current) {
@@ -669,7 +607,6 @@ const LibraryApp = ({ user, onLogout }) => {
       }
     }
     
-    // Stop camera stream
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -965,12 +902,33 @@ const LibraryApp = ({ user, onLogout }) => {
     }
   };
 
+  const importData = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      
+      if (data.books) setBooks(data.books);
+      if (data.members) setMembers(data.members);
+      if (data.loans) setLoans(data.loans);
+      if (data.settings) setSettings(data.settings);
+      
+      alert('Data imported successfully!');
+    } catch (error) {
+      console.error('Import error:', error);
+      alert('Error importing data. Please check the file format.');
+    }
+    
+    event.target.value = '';
+  };
+
   const importSpreadsheet = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     
     try {
-      // Load SheetJS from CDN if not already loaded
       if (!window.XLSX) {
         await new Promise((resolve, reject) => {
           const script = document.createElement('script');
@@ -1002,35 +960,28 @@ const LibraryApp = ({ user, onLogout }) => {
       
       rows.forEach((row, index) => {
         try {
-          // Get all possible values for each field
           const isbnRaw = row['ISBN'] || row['\'ISBN\''] || row['isbn'] || row['Isbn'] || row['Primary ISBN'] || '';
           const titleRaw = row['TITLE'] || row['Title'] || row['title'] || row['BOOK TITLE'] || '';
           const authorRaw = row['AUTHOR'] || row['Author'] || row['author'] || row['AUTHORS'] || row['Primary Author'] || '';
           const categoryRaw = row['COLLECTIONS'] || row['Collections'] || row['Category'] || row['CATEGORY'] || 'General';
           
-          // Clean the values
           const isbn = String(isbnRaw).trim().replace(/[^0-9X]/gi, '');
           const title = String(titleRaw).trim();
           const author = String(authorRaw).trim();
           const category = String(categoryRaw).trim() || 'General';
           
-          // Skip rows without at least a title
           if (!title) {
             return;
           }
           
-          // If no author, use "Unknown Author"
           const finalAuthor = author || 'Unknown Author';
           
-          // Track books without ISBN
           if (!isbn || isbn.length < 10) {
             booksWithoutISBN++;
           }
           
-          // Use ISBN if valid, otherwise use empty string
           const finalISBN = (isbn && isbn.length >= 10) ? isbn : '';
           
-          // Check if book already exists by ISBN (only if ISBN exists)
           if (finalISBN) {
             const existingBook = books.find(b => b.isbn === finalISBN);
             if (existingBook) {
@@ -1039,7 +990,6 @@ const LibraryApp = ({ user, onLogout }) => {
             }
           }
           
-          // Add new book
           const book = {
             id: generateId('B'),
             title,
@@ -1058,12 +1008,10 @@ const LibraryApp = ({ user, onLogout }) => {
         }
       });
       
-      // Add all new books to the library
       if (newBooks.length > 0) {
         setBooks(prev => [...prev, ...newBooks]);
       }
       
-      // Show summary
       let message = `Import Complete!\n\n`;
       message += `✓ New books added: ${newBooksAdded}\n`;
       message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
@@ -1465,7 +1413,6 @@ const LibraryApp = ({ user, onLogout }) => {
                             const isbn = e.target.value;
                             setNewBook({...newBook, isbn: isbn});
                             
-                            // Auto-fetch when ISBN reaches valid length
                             if (isbn.length >= 10 && isbn.length <= 13 && !newBook.title && !newBook.author) {
                               const bookInfo = await fetchBookInfoFromAPI(isbn);
                               if (bookInfo) {
@@ -1479,7 +1426,6 @@ const LibraryApp = ({ user, onLogout }) => {
                             }
                           }}
                           onKeyDown={(e) => {
-                            // Prevent form submission on Enter
                             if (e.key === 'Enter') {
                               e.preventDefault();
                             }
