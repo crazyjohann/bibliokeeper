@@ -930,7 +930,18 @@ const LibraryApp = ({ user, onLogout }) => {
     if (!file) return;
     
     try {
-      const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs');
+      // Load SheetJS from CDN if not already loaded
+      if (!window.XLSX) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      
+      const XLSX = window.XLSX;
       
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
