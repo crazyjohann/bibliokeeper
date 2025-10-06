@@ -947,28 +947,43 @@ const LibraryApp = ({ user, onLogout }) => {
       const workbook = XLSX.read(data, { type: 'array' });
       
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(firstSheet);
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+      
+      if (rows.length === 0) {
+        alert('Spreadsheet is empty or could not be read.');
+        return;
+      }
       
       let newBooksAdded = 0;
       let duplicatesSkipped = 0;
-      let errors = 0;
+      let rowsWithoutISBN = 0;
       
       const newBooks = [];
       
       rows.forEach((row, index) => {
         try {
-          // Extract data from spreadsheet columns (matching your format)
-          const isbn = (row['ISBN'] || row['\'ISBN\''] || '').toString().trim();
-          const title = (row['TITLE'] || row['Title'] || '').toString().trim();
-          const author = (row['AUTHOR'] || row['Author'] || '').toString().trim();
-          const category = (row['COLLECTIONS'] || row['Collections'] || row['Category'] || 'General').toString().trim();
+          // Get all possible values for each field
+          const isbnRaw = row['ISBN'] || row['\'ISBN\''] || row['isbn'] || row['Isbn'] || row['Primary ISBN'] || '';
+          const titleRaw = row['TITLE'] || row['Title'] || row['title'] || row['BOOK TITLE'] || '';
+          const authorRaw = row['AUTHOR'] || row['Author'] || row['author'] || row['AUTHORS'] || row['Primary Author'] || '';
+          const categoryRaw = row['COLLECTIONS'] || row['Collections'] || row['Category'] || row['CATEGORY'] || 'General';
           
-          // Skip rows without essential data
-          if (!isbn || !title || !author) {
-            console.log(`Row ${index + 1}: Missing required data, skipping`);
-            errors++;
+          // Clean the values
+          const isbn = String(isbnRaw).trim().replace(/[^0-9X]/gi, '');
+          const title = String(titleRaw).trim();
+          const author = String(authorRaw).trim();
+          const category = String(categoryRaw).trim() || 'General';
+          
+          // Skip rows without ISBN (most critical field)
+          if (!isbn || isbn.length < 10) {
+            rowsWithoutISBN++;
             return;
           }
+          
+          // If no title, use "Unknown Title"
+          // If no author, use "Unknown Author"
+          const finalTitle = title || 'Unknown Title';
+          const finalAuthor = author || 'Unknown Author';
           
           // Check if book already exists by ISBN
           const existingBook = books.find(b => b.isbn === isbn);
@@ -981,10 +996,10 @@ const LibraryApp = ({ user, onLogout }) => {
           // Add new book
           const book = {
             id: generateId('B'),
-            title,
-            author,
+            title: finalTitle,
+            author: finalAuthor,
             isbn,
-            category: category || 'General',
+            category,
             available: 1,
             total: 1
           };
@@ -993,8 +1008,7 @@ const LibraryApp = ({ user, onLogout }) => {
           newBooksAdded++;
           
         } catch (error) {
-          console.error(`Error processing row ${index + 1}:`, error);
-          errors++;
+          console.error(`Error processing row ${index + 2}:`, error);
         }
       });
       
@@ -1007,8 +1021,8 @@ const LibraryApp = ({ user, onLogout }) => {
       let message = `Import Complete!\n\n`;
       message += `✓ New books added: ${newBooksAdded}\n`;
       message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
-      if (errors > 0) {
-        message += `⚠ Rows with errors: ${errors}\n`;
+      if (rowsWithoutISBN > 0) {
+        message += `⚠ Rows without valid ISBN: ${rowsWithoutISBN}\n`;
       }
       message += `\nTotal books in library: ${books.length + newBooksAdded}`;
       
@@ -1016,7 +1030,7 @@ const LibraryApp = ({ user, onLogout }) => {
       
     } catch (error) {
       console.error('Spreadsheet import error:', error);
-      alert('Error importing spreadsheet. Please make sure it\'s a valid Excel file (.xls or .xlsx).');
+      alert('Error importing spreadsheet: ' + error.message);
     }
     
     event.target.value = '';
