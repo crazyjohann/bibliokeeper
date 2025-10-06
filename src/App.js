@@ -1,4 +1,44 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+const importSpreadsheet = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    try {
+      // Load SheetJS from CDN if not already loaded
+      if (!window.XLSX) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      
+      const XLSX = window.XLSX;
+      
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+      
+      if (rows.length === 0) {
+        alert('Spreadsheet is empty or could not be read.');
+        return;
+      }
+      
+      let newBooksAdded = 0;
+      let duplicatesSkipped = 0;
+      let booksWithoutISBN = 0;
+      
+      const newBooks = [];
+      
+      rows.forEach((row, index) => {
+        try {
+          // Get all possible values for each field
+          const isbnRaw = row['ISBN'] || row['\'ISBN\''] || row['isbn'] || row['Isbn'] || row['Primary ISBN'] || '';
+          const titleRaw = row['TITLE'] || row['Title'] || row['title'] || row['BOOK TITLE'] || '';
+          const authorRaw = row['AUTHORimport React, { useEffect, useState, useRef, useCallback } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell, AlertCircle } from 'lucide-react';
@@ -956,7 +996,7 @@ const LibraryApp = ({ user, onLogout }) => {
       
       let newBooksAdded = 0;
       let duplicatesSkipped = 0;
-      let rowsWithoutISBN = 0;
+      let booksWithoutISBN = 0;
       
       const newBooks = [];
       
@@ -974,31 +1014,37 @@ const LibraryApp = ({ user, onLogout }) => {
           const author = String(authorRaw).trim();
           const category = String(categoryRaw).trim() || 'General';
           
-          // Skip rows without ISBN (most critical field)
-          if (!isbn || isbn.length < 10) {
-            rowsWithoutISBN++;
+          // Skip rows without at least a title
+          if (!title) {
             return;
           }
           
-          // If no title, use "Unknown Title"
           // If no author, use "Unknown Author"
-          const finalTitle = title || 'Unknown Title';
           const finalAuthor = author || 'Unknown Author';
           
-          // Check if book already exists by ISBN
-          const existingBook = books.find(b => b.isbn === isbn);
+          // Track books without ISBN
+          if (!isbn || isbn.length < 10) {
+            booksWithoutISBN++;
+          }
           
-          if (existingBook) {
-            duplicatesSkipped++;
-            return;
+          // Use ISBN if valid, otherwise use empty string
+          const finalISBN = (isbn && isbn.length >= 10) ? isbn : '';
+          
+          // Check if book already exists by ISBN (only if ISBN exists)
+          if (finalISBN) {
+            const existingBook = books.find(b => b.isbn === finalISBN);
+            if (existingBook) {
+              duplicatesSkipped++;
+              return;
+            }
           }
           
           // Add new book
           const book = {
             id: generateId('B'),
-            title: finalTitle,
+            title,
             author: finalAuthor,
-            isbn,
+            isbn: finalISBN,
             category,
             available: 1,
             total: 1
@@ -1021,8 +1067,8 @@ const LibraryApp = ({ user, onLogout }) => {
       let message = `Import Complete!\n\n`;
       message += `✓ New books added: ${newBooksAdded}\n`;
       message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
-      if (rowsWithoutISBN > 0) {
-        message += `⚠ Rows without valid ISBN: ${rowsWithoutISBN}\n`;
+      if (booksWithoutISBN > 0) {
+        message += `ℹ Books without ISBN: ${booksWithoutISBN} (still added)\n`;
       }
       message += `\nTotal books in library: ${books.length + newBooksAdded}`;
       
@@ -1536,7 +1582,6 @@ const LibraryApp = ({ user, onLogout }) => {
                       <option value="Standard">Standard</option>
                       <option value="Student">Student</option>
                       <option value="Senior">Senior</option>
-                      <option value="Staff">Church Staff</option>
                     </select>
                     <button onClick={handleAddMember} className="w-full bg-purple-500 hover:bg-purple-600 text-white py-3 rounded-lg font-semibold">Add Member</button>
                   </div>
