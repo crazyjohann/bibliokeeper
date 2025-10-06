@@ -12,9 +12,6 @@ const firebaseConfig = {
   appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:771697995545:web:c23b431eb9321dbd49df88"
 };
 
-// Google Books API Key
-const GOOGLE_BOOKS_API_KEY = "AIzaSyCeJLBYthkoyaMckgTT0vnoZ_slIXYrvC4";
-
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -254,11 +251,38 @@ const LibraryApp = ({ user, onLogout }) => {
   const handleMemberScanInputChange = useCallback((e) => setMemberScanInput(e.target.value), []);
   const handleSearchQueryChange = useCallback((e) => setSearchQuery(e.target.value), []);
 
+  // Enhanced Open Library API with robust error handling
+  const fetchAuthorName = async (authorEntry) => {
+    if (!authorEntry) return null;
+
+    // Handle direct name
+    if (authorEntry.name) {
+      return authorEntry.name;
+    }
+
+    // Handle author key reference
+    if (authorEntry.key) {
+      try {
+        const response = await fetch(`https://openlibrary.org${authorEntry.key}.json`);
+        if (response.ok) {
+          const authorData = await response.json();
+          if (authorData?.name) {
+            return authorData.name;
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching author details from Open Library:', error);
+      }
+    }
+
+    return null;
+  };
+
   const cleanISBN = (isbn) => {
+    // Remove all non-digit characters except X (for ISBN-10)
     return isbn.replace(/[^0-9X]/gi, '').toUpperCase();
   };
 
-  // REPLACED: Google Books API instead of Open Library
   const fetchBookInfoFromAPI = async (isbn) => {
     setApiError(null);
     setIsLoadingBookData(true);
@@ -272,39 +296,77 @@ const LibraryApp = ({ user, onLogout }) => {
     }
     
     try {
-      console.log(`Fetching book info from Google Books for ISBN: ${cleanedISBN}`);
+      console.log(`Fetching book info from Open Library for ISBN: ${cleanedISBN}`);
       
-      const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanedISBN}&key=${GOOGLE_BOOKS_API_KEY}`;
-      const response = await fetch(url);
+      // Primary endpoint: Books API
+      const response = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${cleanedISBN}&jscmd=data&format=json`);
       
       if (!response.ok) {
-        throw new Error(`Google Books API responded with status: ${response.status}`);
+        throw new Error(`API responded with status: ${response.status}`);
       }
       
       const data = await response.json();
-      console.log('Google Books API response:', data);
+      console.log('Open Library API response:', data);
       
-      if (data.items && data.items.length > 0) {
-        const book = data.items[0].volumeInfo;
+      const bookData = data[`ISBN:${cleanedISBN}`];
+      
+      if (bookData) {
+        const title = bookData.title || 'Unknown Title';
         
-        const title = book.title || 'Unknown Title';
-        const author = book.authors && book.authors.length > 0 
-          ? book.authors.join(', ') 
-          : 'Unknown Author';
-        const category = book.categories && book.categories.length > 0 
-          ? book.categories[0] 
+        let author = 'Unknown Author';
+        if (bookData.authors && bookData.authors.length > 0) {
+          const resolvedAuthor = await fetchAuthorName(bookData.authors[0]);
+          author = resolvedAuthor || bookData.by_statement || 'Unknown Author';
+        } else if (bookData.by_statement) {
+          author = bookData.by_statement;
+        }
+        
+        const category = bookData.subjects && bookData.subjects.length > 0 
+          ? bookData.subjects[0].name 
           : 'General';
         
         const bookInfo = { title, author, category };
-        console.log('Successfully parsed book info from Google Books:', bookInfo);
+        console.log('Successfully parsed book info from Books API:', bookInfo);
         setIsLoadingBookData(false);
         return bookInfo;
+      } else {
+        // Fallback: ISBN endpoint
+        console.log('No data from Books API, trying ISBN endpoint...');
+        const isbnResponse = await fetch(`https://openlibrary.org/isbn/${cleanedISBN}.json`);
+        
+        if (!isbnResponse.ok) {
+          throw new Error(`ISBN endpoint responded with status: ${isbnResponse.status}`);
+        }
+        
+        const isbnData = await isbnResponse.json();
+        console.log('ISBN endpoint response:', isbnData);
+        
+        if (isbnData) {
+          const title = isbnData.title || 'Unknown Title';
+          let author = isbnData.by_statement || 'Unknown Author';
+
+          if (isbnData.authors && isbnData.authors.length > 0) {
+            const resolvedAuthor = await fetchAuthorName(isbnData.authors[0]);
+            if (resolvedAuthor) {
+              author = resolvedAuthor;
+            }
+          }
+          
+          const category = isbnData.subjects && isbnData.subjects.length > 0
+            ? isbnData.subjects[0]
+            : 'General';
+
+          const bookInfo = { title, author, category };
+          console.log('Successfully parsed book info from ISBN endpoint:', bookInfo);
+          setIsLoadingBookData(false);
+          return bookInfo;
+        }
       }
 
-      throw new Error('No book data found in Google Books');
+      throw new Error('No book data found');
       
     } catch (error) {
-      console.error('Error with Google Books API:', error);
+      console.error('Error with Open Library API:', error);
       setApiError(`Could not find book information for ISBN: ${cleanedISBN}. Please enter details manually.`);
       setIsLoadingBookData(false);
       return null;
@@ -320,16 +382,28 @@ const LibraryApp = ({ user, onLogout }) => {
     isScanningRef.current = true;
     setLastScannedBarcode(null);
     
+    // Clear form when starting ISBN scan
     if (type === 'isbn') {
       setNewBook({ title: '', author: '', isbn: '', category: '', quantity: 1 });
     }
     
+    // Set timeout for scanning
     scanTimeoutRef.current = setTimeout(() => {
       stopBarcodeScanning();
       alert('Scanning timed out after 30 seconds. Please try again.');
     }, 30000);
     
     try {
+      // Check if camera exists first
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasCamera = devices.some(device => device.kind === 'videoinput');
+      
+      if (!hasCamera) {
+        setCameraError("No webcam detected. Please use your physical USB barcode scanner by typing/scanning directly into the input field, then press Tab.");
+        // Don't close modal - let user read the message and close manually
+        return;
+      }
+      
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: { ideal: 'environment' },
@@ -347,28 +421,25 @@ const LibraryApp = ({ user, onLogout }) => {
           startQuaggaScanning();
         } catch (playError) {
           console.error('Video play error:', playError);
-          setCameraError("Could not start video playback. Please try again.");
-          stopBarcodeScanning();
+          setCameraError("Could not start video playback. Use your physical barcode scanner instead.");
         }
       } else {
         stream.getTracks().forEach(track => track.stop());
       }
     } catch (err) {
       console.error('Camera error:', err);
-      let errorMessage = "Camera access denied or not available.";
+      let errorMessage = "Camera not available. Use your physical USB barcode scanner by typing/scanning in the input field.";
       
       if (err.name === 'NotAllowedError') {
-        errorMessage = "Camera access denied. Please allow camera permissions and try again.";
+        errorMessage = "Camera access denied. Use your physical barcode scanner instead.";
       } else if (err.name === 'NotFoundError') {
-        errorMessage = "No camera found. Please connect a camera and try again.";
+        errorMessage = "No webcam found. Use your physical barcode scanner instead.";
       } else if (err.name === 'NotReadableError') {
-        errorMessage = "Camera is already in use by another application.";
+        errorMessage = "Camera is in use. Use your physical barcode scanner instead.";
       }
       
       setCameraError(errorMessage);
-      setIsScanning(false);
-      isScanningRef.current = false;
-      setScanningFor(null);
+      // Don't close modal automatically
     }
   };
 
@@ -380,6 +451,7 @@ const LibraryApp = ({ user, onLogout }) => {
     }
 
     try {
+      // Load Quagga from CDN
       if (!window.Quagga) {
         await new Promise((resolve, reject) => {
           const script = document.createElement('script');
@@ -399,6 +471,7 @@ const LibraryApp = ({ user, onLogout }) => {
         return;
       }
 
+      // Stop any existing Quagga instance
       if (quaggaRef.current && quaggaOnDetectedRef.current) {
         try {
           quaggaRef.current.offDetected(quaggaOnDetectedRef.current);
@@ -541,6 +614,7 @@ const LibraryApp = ({ user, onLogout }) => {
     
     isScanningRef.current = false;
     
+    // Stop Quagga
     if (quaggaRef.current) {
       try {
         if (quaggaOnDetectedRef.current) {
@@ -555,6 +629,7 @@ const LibraryApp = ({ user, onLogout }) => {
       }
     }
     
+    // Stop camera stream
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -850,43 +925,88 @@ const LibraryApp = ({ user, onLogout }) => {
     }
   };
 
-  const importData = (event) => {
+  const importSpreadsheet = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result;
-        if (typeof text !== 'string') {
-          alert('Error reading file.');
-          return;
+    try {
+      const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs');
+      
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(firstSheet);
+      
+      let newBooksAdded = 0;
+      let duplicatesSkipped = 0;
+      let errors = 0;
+      
+      const newBooks = [];
+      
+      rows.forEach((row, index) => {
+        try {
+          // Extract data from spreadsheet columns (matching your format)
+          const isbn = (row['ISBN'] || row['\'ISBN\''] || '').toString().trim();
+          const title = (row['TITLE'] || row['Title'] || '').toString().trim();
+          const author = (row['AUTHOR'] || row['Author'] || '').toString().trim();
+          const category = (row['COLLECTIONS'] || row['Collections'] || row['Category'] || 'General').toString().trim();
+          
+          // Skip rows without essential data
+          if (!isbn || !title || !author) {
+            console.log(`Row ${index + 1}: Missing required data, skipping`);
+            errors++;
+            return;
+          }
+          
+          // Check if book already exists by ISBN
+          const existingBook = books.find(b => b.isbn === isbn);
+          
+          if (existingBook) {
+            duplicatesSkipped++;
+            return;
+          }
+          
+          // Add new book
+          const book = {
+            id: generateId('B'),
+            title,
+            author,
+            isbn,
+            category: category || 'General',
+            available: 1,
+            total: 1
+          };
+          
+          newBooks.push(book);
+          newBooksAdded++;
+          
+        } catch (error) {
+          console.error(`Error processing row ${index + 1}:`, error);
+          errors++;
         }
-        
-        const data = JSON.parse(text);
-        
-        if (!data.version) {
-          alert('Invalid backup file format.');
-          return;
-        }
-        
-        if (window.confirm('This will replace all current data. Are you sure you want to continue?')) {
-          if (Array.isArray(data.books)) setBooks(data.books);
-          if (Array.isArray(data.members)) setMembers(data.members);
-          if (Array.isArray(data.loans)) setLoans(data.loans);
-          if (Array.isArray(data.reservations)) setReservations(data.reservations);
-          if (data.settings && typeof data.settings === 'object') setSettings(data.settings);
-          alert('Data imported successfully!');
-        }
-      } catch (error) {
-        console.error('Import error:', error);
-        alert('Error importing data. Please check the file format.');
+      });
+      
+      // Add all new books to the library
+      if (newBooks.length > 0) {
+        setBooks(prev => [...prev, ...newBooks]);
       }
-    };
-    reader.onerror = () => {
-      alert('Error reading file. Please try again.');
-    };
-    reader.readAsText(file);
+      
+      // Show summary
+      let message = `Import Complete!\n\n`;
+      message += `✓ New books added: ${newBooksAdded}\n`;
+      message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
+      if (errors > 0) {
+        message += `⚠ Rows with errors: ${errors}\n`;
+      }
+      message += `\nTotal books in library: ${books.length + newBooksAdded}`;
+      
+      alert(message);
+      
+    } catch (error) {
+      console.error('Spreadsheet import error:', error);
+      alert('Error importing spreadsheet. Please make sure it\'s a valid Excel file (.xls or .xlsx).');
+    }
     
     event.target.value = '';
   };
@@ -1206,15 +1326,38 @@ const LibraryApp = ({ user, onLogout }) => {
                 </div>
                 
                 <div className="flex gap-3">
+                  <label className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 cursor-pointer">
+                    <Upload className="w-4 h-4" />
+                    Import Spreadsheet
+                    <input type="file" accept=".xls,.xlsx" onChange={importSpreadsheet} className="hidden" />
+                  </label>
                   <button onClick={exportData} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
                     <Download className="w-4 h-4" />
                     Export
                   </button>
-                  <label className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 cursor-pointer">
-                    <Upload className="w-4 h-4" />
-                    Import
-                    <input type="file" accept=".json" onChange={importData} className="hidden" />
-                  </label>
+                  <button 
+                    onClick={() => {
+                      if (window.confirm('⚠️ DELETE ALL BOOKS?\n\nThis will permanently delete ALL books from the library.\n\nBooks with active loans cannot be deleted.\n\nAre you absolutely sure?')) {
+                        const booksWithLoans = books.filter(book => 
+                          loans.some(loan => loan.bookId === book.id && loan.status === 'active')
+                        );
+                        
+                        if (booksWithLoans.length > 0) {
+                          alert(`Cannot delete all books.\n\n${booksWithLoans.length} book(s) have active loans.\n\nReturn all books first, then try again.`);
+                          return;
+                        }
+                        
+                        if (window.confirm('FINAL WARNING: This cannot be undone!\n\nDelete all ' + books.length + ' books?')) {
+                          setBooks([]);
+                          alert('All books deleted successfully.');
+                        }
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete All
+                  </button>
                 </div>
               </div>
               
@@ -1247,10 +1390,12 @@ const LibraryApp = ({ user, onLogout }) => {
                         <input 
                           type="text" 
                           value={newBook.isbn} 
-                          onChange={(e) => setNewBook({...newBook, isbn: e.target.value})} 
-                          onBlur={async (e) => {
-                            const isbn = e.target.value.trim();
-                            if (isbn.length >= 10 && !newBook.title && !newBook.author) {
+                          onChange={async (e) => {
+                            const isbn = e.target.value;
+                            setNewBook({...newBook, isbn: isbn});
+                            
+                            // Auto-fetch when ISBN reaches valid length
+                            if (isbn.length >= 10 && isbn.length <= 13 && !newBook.title && !newBook.author) {
                               const bookInfo = await fetchBookInfoFromAPI(isbn);
                               if (bookInfo) {
                                 setNewBook(prev => ({
@@ -1262,6 +1407,12 @@ const LibraryApp = ({ user, onLogout }) => {
                               }
                             }
                           }}
+                          onKeyDown={(e) => {
+                            // Prevent form submission on Enter
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                            }
+                          }}
                           placeholder="ISBN *" 
                           className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-orange-500" 
                         />
@@ -1269,7 +1420,7 @@ const LibraryApp = ({ user, onLogout }) => {
                           <Camera className="w-5 h-5" />
                         </button>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">Scan with barcode scanner or webcam. Auto-fills when you tab out.</p>
+                      <p className="text-xs text-gray-500 mt-1">Scan with barcode scanner - auto-fills automatically as you type!</p>
                     </div>
                     
                     <select value={newBook.category} onChange={(e) => setNewBook({...newBook, category: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
