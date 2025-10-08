@@ -1,16 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell, AlertCircle } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
+import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell, AlertCircle, LogIn } from 'lucide-react';
 
-const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyCeJLBYthkoyaMckgTT0vnoZ_slXYrvC4",
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "bibliokeeper.firebaseapp.com",
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "bibliokeeper",
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "bibliokeeper.appspot.com",
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "771697995545",
-  appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:771697995545:web:c23b431eb9321dbd49df88"
-};
+// Initialize Supabase client
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || "https://zhyigfuzgdvdixvhuvgf.supabase.co";
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpoeWlnZnV6Z2R2ZGl4dmh1dmdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk3OTQ0NjMsImV4cCI6MjA3NTM3MDQ2M30.Lrq-akIdI5x2a4Bci9-K4x-OO8EJooMENZtCnLwG3-0";
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -42,21 +37,6 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-function isPlaceholderConfig(cfg) {
-  return Object.values(cfg).some((v) => typeof v === "string" && (v.includes("YOUR_") || v === ""));
-}
-
-function ensureFirebaseApp() {
-  if (typeof window === "undefined") return null;
-  if (getApps().length) return getApps()[0];
-  try {
-    return initializeApp(firebaseConfig);
-  } catch (err) {
-    console.error("Firebase initialization error:", err);
-    return null;
-  }
-}
-
 const LoadingScreen = () => (
   <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
     <div className="text-center">
@@ -69,36 +49,56 @@ const LoadingScreen = () => (
 const LoginScreen = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
 
-  const handleLogin = async () => {
+  const handleAuth = async (e) => {
+    e.preventDefault();
     setLoading(true);
     setError(null);
-    if (isPlaceholderConfig(firebaseConfig)) {
-      setError("Firebase configuration is incomplete. Please check your environment variables.");
-      setLoading(false);
-      return;
-    }
-    const app = ensureFirebaseApp();
-    if (!app) {
-      setError("Unable to initialize Firebase. Please check your configuration.");
-      setLoading(false);
-      return;
-    }
+
     try {
-      const auth = getAuth(app);
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      onLogin(result.user);
+      let result;
+      if (isSignUp) {
+        result = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (result.error) throw result.error;
+        if (result.data.user) {
+          setError("Please check your email to confirm your account before signing in.");
+          setIsSignUp(false);
+        }
+      } else {
+        result = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (result.error) throw result.error;
+        if (result.data.user) {
+          onLogin(result.data.user);
+        }
+      }
     } catch (err) {
       console.error("Authentication error:", err);
-      if (err.code === 'auth/popup-closed-by-user') {
-        setError("Sign-in was cancelled. Please try again.");
-      } else if (err.code === 'auth/network-request-failed') {
-        setError("Network error. Please check your internet connection.");
-      } else {
-        setError("Sign-in failed. Please try again or contact support.");
-      }
+      setError(err.message || "Authentication failed. Please try again.");
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error("Google authentication error:", err);
+      setError(err.message || "Google sign-in failed. Please try again.");
       setLoading(false);
     }
   };
@@ -107,19 +107,63 @@ const LoginScreen = ({ onLogin }) => {
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-100 to-blue-200">
       <div className="bg-white p-8 rounded-2xl shadow-xl text-center w-96">
         <h1 className="text-3xl font-bold mb-4">📚 Bibliokeeper</h1>
-        <p className="text-sm text-gray-600 mb-4">Church Library Management System</p>
+        <p className="text-sm text-gray-600 mb-6">Church Library Management System</p>
+        
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
             {error}
           </div>
         )}
+        
+        <form onSubmit={handleAuth} className="space-y-4">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email address"
+            required
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            required
+            minLength="6"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-blue-500 hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-semibold w-full transition-colors"
+          >
+            {loading ? "Processing..." : (isSignUp ? "Sign Up" : "Sign In")}
+          </button>
+        </form>
+
+        <div className="my-4 flex items-center">
+          <div className="flex-1 border-t border-gray-300"></div>
+          <span className="px-4 text-gray-500 text-sm">OR</span>
+          <div className="flex-1 border-t border-gray-300"></div>
+        </div>
+
         <button
-          onClick={handleLogin}
+          onClick={handleGoogleLogin}
           disabled={loading}
-          className="bg-red-500 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-semibold w-full transition-colors"
+          className="bg-red-500 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-semibold w-full transition-colors flex items-center justify-center gap-2"
         >
+          <LogIn className="w-5 h-5" />
           {loading ? "Signing in..." : "Sign in with Google"}
         </button>
+
+        <button
+          onClick={() => setIsSignUp(!isSignUp)}
+          className="mt-4 text-sm text-blue-600 hover:underline"
+        >
+          {isSignUp ? "Already have an account? Sign In" : "Need an account? Sign Up"}
+        </button>
+        
         <p className="text-xs text-gray-500 mt-4">Authorized librarians only</p>
       </div>
     </div>
@@ -128,30 +172,9 @@ const LoginScreen = ({ onLogin }) => {
 
 const LibraryApp = ({ user, onLogout }) => {
   const [currentScreen, setCurrentScreen] = useState('main');
-  const [books, setBooks] = useState(() => {
-    try {
-      const saved = localStorage.getItem('bibliokeeper_books');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [members, setMembers] = useState(() => {
-    try {
-      const saved = localStorage.getItem('bibliokeeper_members');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [loans, setLoans] = useState(() => {
-    try {
-      const saved = localStorage.getItem('bibliokeeper_loans');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [books, setBooks] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [loans, setLoans] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [overdueItems, setOverdueItems] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -166,6 +189,8 @@ const LibraryApp = ({ user, onLogout }) => {
   const [cameraError, setCameraError] = useState(null);
   const [isLoadingBookData, setIsLoadingBookData] = useState(false);
   const [lastScannedBarcode, setLastScannedBarcode] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [dataError, setDataError] = useState(null);
   
   const videoRef = useRef(null);
   const scanTimeoutRef = useRef(null);
@@ -174,62 +199,89 @@ const LibraryApp = ({ user, onLogout }) => {
   const quaggaRef = useRef(null);
   const quaggaOnDetectedRef = useRef(null);
   
-  const [settings, setSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem('bibliokeeper_settings');
-      return saved ? JSON.parse(saved) : {
-        libraryName: 'Bibliokeeper',
-        maxLoansPerMember: 10,
-        loanPeriodDays: 14,
-        enableFines: false,
-        finePerDay: 0.00,
-        allowReservations: true,
-        autoReminders: true
-      };
-    } catch {
-      return {
-        libraryName: 'Bibliokeeper',
-        maxLoansPerMember: 10,
-        loanPeriodDays: 14,
-        enableFines: false,
-        finePerDay: 0.00,
-        allowReservations: true,
-        autoReminders: true
-      };
-    }
+  const [settings, setSettings] = useState({
+    libraryName: 'Bibliokeeper',
+    maxLoansPerMember: 10,
+    loanPeriodDays: 14,
+    enableFines: false,
+    finePerDay: 0.00,
+    allowReservations: true,
+    autoReminders: true
   });
 
+  // Load data from Supabase on component mount
   useEffect(() => {
-    try {
-      localStorage.setItem('bibliokeeper_books', JSON.stringify(books));
-    } catch (e) {
-      console.error('Failed to save books to localStorage:', e);
-    }
-  }, [books]);
+    loadData();
+  }, []);
 
-  useEffect(() => {
+  const loadData = async () => {
+    setLoading(true);
+    setDataError(null);
     try {
-      localStorage.setItem('bibliokeeper_members', JSON.stringify(members));
-    } catch (e) {
-      console.error('Failed to save members to localStorage:', e);
-    }
-  }, [members]);
+      // Load books
+      const { data: booksData, error: booksError } = await supabase
+        .from('books')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (booksError) throw booksError;
+      setBooks(booksData || []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('bibliokeeper_loans', JSON.stringify(loans));
-    } catch (e) {
-      console.error('Failed to save loans to localStorage:', e);
-    }
-  }, [loans]);
+      // Load members
+      const { data: membersData, error: membersError } = await supabase
+        .from('members')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (membersError) throw membersError;
+      setMembers(membersData || []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('bibliokeeper_settings', JSON.stringify(settings));
-    } catch (e) {
-      console.error('Failed to save settings to localStorage:', e);
+      // Load loans
+      const { data: loansData, error: loansError } = await supabase
+        .from('loans')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (loansError) throw loansError;
+      setLoans(loansData || []);
+
+      // Load settings
+      const { data: settingsData, error: settingsError } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (!settingsError && settingsData) {
+        setSettings(settingsData.settings);
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+      setDataError('Failed to load library data. Please refresh the page.');
+    } finally {
+      setLoading(false);
     }
-  }, [settings]);
+  };
+
+  const saveSettings = async (newSettings) => {
+    try {
+      const { error } = await supabase
+        .from('settings')
+        .upsert({
+          user_id: user.id,
+          settings: newSettings,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        });
+      
+      if (error) throw error;
+      setSettings(newSettings);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      alert('Failed to save settings. Please try again.');
+    }
+  };
 
   const generateId = (prefix) => {
     const timestamp = Date.now().toString(36);
@@ -547,10 +599,18 @@ const LibraryApp = ({ user, onLogout }) => {
               available: 1,
               total: 1
             };
-            setBooks(prev => [...prev, newBookEntry]);
-            stopBarcodeScanning();
-            alert(`New book "${bookInfo.title}" by ${bookInfo.author} added to library automatically!`);
-            return;
+            
+            // Save to Supabase
+            const { error } = await supabase
+              .from('books')
+              .insert([newBookEntry]);
+            
+            if (!error) {
+              setBooks(prev => [...prev, newBookEntry]);
+              stopBarcodeScanning();
+              alert(`New book "${bookInfo.title}" by ${bookInfo.author} added to library automatically!`);
+              return;
+            }
           }
         } catch (error) {
           console.error('Error auto-adding book:', error);
@@ -655,12 +715,12 @@ const LibraryApp = ({ user, onLogout }) => {
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
-    const overdue = loans.filter(loan => loan.status === 'active' && loan.dueDate < today);
+    const overdue = loans.filter(loan => loan.status === 'active' && loan.due_date < today);
     setOverdueItems(overdue);
     
     const newNotifications = overdue.map(item => {
-      const book = findBook(item.bookId);
-      const member = findMember(item.memberId);
+      const book = findBook(item.book_id);
+      const member = findMember(item.member_id);
       return {
         id: item.id,
         type: 'overdue',
@@ -671,7 +731,7 @@ const LibraryApp = ({ user, onLogout }) => {
     setNotifications(newNotifications);
   }, [loans, books, members]);
 
-  const handleLoan = () => {
+  const handleLoan = async () => {
     const book = findBook(scanInput);
     const member = findMember(memberScanInput);
     
@@ -690,7 +750,7 @@ const LibraryApp = ({ user, onLogout }) => {
       return;
     }
     
-    const memberLoans = loans.filter(loan => loan.memberId === member.id && loan.status === 'active');
+    const memberLoans = loans.filter(loan => loan.member_id === member.id && loan.status === 'active');
     if (memberLoans.length >= settings.maxLoansPerMember) {
       alert(`Member has reached maximum loan limit (${settings.maxLoansPerMember} books)!`);
       return;
@@ -701,24 +761,44 @@ const LibraryApp = ({ user, onLogout }) => {
     
     const newLoan = {
       id: generateId('L'),
-      bookId: book.id,
-      memberId: member.id,
-      loanDate,
-      dueDate,
+      book_id: book.id,
+      member_id: member.id,
+      loan_date: loanDate,
+      due_date: dueDate,
       status: 'active'
     };
     
-    setLoans([...loans, newLoan]);
-    setBooks(books.map(b => 
-      b.id === book.id ? { ...b, available: Math.max(0, b.available - 1) } : b
-    ));
-    
-    setScanInput('');
-    setMemberScanInput('');
-    alert(`Book "${book.title}" loaned to ${member.name}!\nDue date: ${dueDate}`);
+    try {
+      // Save loan to Supabase
+      const { error: loanError } = await supabase
+        .from('loans')
+        .insert([newLoan]);
+      
+      if (loanError) throw loanError;
+      
+      // Update book availability
+      const { error: bookError } = await supabase
+        .from('books')
+        .update({ available: Math.max(0, book.available - 1) })
+        .eq('id', book.id);
+      
+      if (bookError) throw bookError;
+      
+      setLoans([...loans, newLoan]);
+      setBooks(books.map(b => 
+        b.id === book.id ? { ...b, available: Math.max(0, b.available - 1) } : b
+      ));
+      
+      setScanInput('');
+      setMemberScanInput('');
+      alert(`Book "${book.title}" loaned to ${member.name}!\nDue date: ${dueDate}`);
+    } catch (error) {
+      console.error('Error processing loan:', error);
+      alert('Failed to process loan. Please try again.');
+    }
   };
 
-  const handleReturn = () => {
+  const handleReturn = async () => {
     const book = findBook(scanInput);
     
     if (!book) {
@@ -726,7 +806,7 @@ const LibraryApp = ({ user, onLogout }) => {
       return;
     }
     
-    const loanToReturn = loans.find(loan => loan.bookId === book.id && loan.status === 'active');
+    const loanToReturn = loans.find(loan => loan.book_id === book.id && loan.status === 'active');
     
     if (!loanToReturn) {
       alert('This book is not currently loaned out!');
@@ -734,26 +814,50 @@ const LibraryApp = ({ user, onLogout }) => {
     }
     
     const today = new Date().toISOString().split('T')[0];
-    const isOverdue = today > loanToReturn.dueDate;
+    const isOverdue = today > loanToReturn.due_date;
     
-    setLoans(loans.map(loan => 
-      loan.id === loanToReturn.id 
-        ? { ...loan, status: 'returned', returnDate: today } 
-        : loan
-    ));
-    
-    setBooks(books.map(b => 
-      b.id === book.id ? { ...b, available: Math.min(b.total, b.available + 1) } : b
-    ));
-    
-    setScanInput('');
-    const message = isOverdue 
-      ? `Book "${book.title}" returned successfully! (This book was overdue)`
-      : `Book "${book.title}" returned successfully!`;
-    alert(message);
+    try {
+      // Update loan status in Supabase
+      const { error: loanError } = await supabase
+        .from('loans')
+        .update({ 
+          status: 'returned', 
+          return_date: today 
+        })
+        .eq('id', loanToReturn.id);
+      
+      if (loanError) throw loanError;
+      
+      // Update book availability
+      const { error: bookError } = await supabase
+        .from('books')
+        .update({ available: Math.min(book.total, book.available + 1) })
+        .eq('id', book.id);
+      
+      if (bookError) throw bookError;
+      
+      setLoans(loans.map(loan => 
+        loan.id === loanToReturn.id 
+          ? { ...loan, status: 'returned', return_date: today } 
+          : loan
+      ));
+      
+      setBooks(books.map(b => 
+        b.id === book.id ? { ...b, available: Math.min(b.total, b.available + 1) } : b
+      ));
+      
+      setScanInput('');
+      const message = isOverdue 
+        ? `Book "${book.title}" returned successfully! (This book was overdue)`
+        : `Book "${book.title}" returned successfully!`;
+      alert(message);
+    } catch (error) {
+      console.error('Error processing return:', error);
+      alert('Failed to process return. Please try again.');
+    }
   };
 
-  const handleAddBook = () => {
+  const handleAddBook = async () => {
     if (!newBook.title || !newBook.author || !newBook.isbn) {
       alert('Please fill in all required fields (Title, Author, ISBN)!');
       return;
@@ -781,25 +885,48 @@ const LibraryApp = ({ user, onLogout }) => {
       total: quantity
     };
     
-    setBooks([...books, book]);
-    setNewBook({ title: '', author: '', isbn: '', category: '', quantity: 1 });
-    alert(`Book "${book.title}" added successfully with ID: ${book.id}`);
+    try {
+      const { error } = await supabase
+        .from('books')
+        .insert([book]);
+      
+      if (error) throw error;
+      
+      setBooks([...books, book]);
+      setNewBook({ title: '', author: '', isbn: '', category: '', quantity: 1 });
+      alert(`Book "${book.title}" added successfully with ID: ${book.id}`);
+    } catch (error) {
+      console.error('Error adding book:', error);
+      alert('Failed to add book. Please try again.');
+    }
   };
 
-  const handleDeleteBook = (bookId) => {
-    const activeLoans = loans.filter(loan => loan.bookId === bookId && loan.status === 'active');
+  const handleDeleteBook = async (bookId) => {
+    const activeLoans = loans.filter(loan => loan.book_id === bookId && loan.status === 'active');
     if (activeLoans.length > 0) {
       alert('Cannot delete book with active loans!');
       return;
     }
     
     if (window.confirm('Are you sure you want to delete this book?')) {
-      setBooks(books.filter(book => book.id !== bookId));
-      alert('Book deleted successfully!');
+      try {
+        const { error } = await supabase
+          .from('books')
+          .delete()
+          .eq('id', bookId);
+        
+        if (error) throw error;
+        
+        setBooks(books.filter(book => book.id !== bookId));
+        alert('Book deleted successfully!');
+      } catch (error) {
+        console.error('Error deleting book:', error);
+        alert('Failed to delete book. Please try again.');
+      }
     }
   };
 
-  const handleAddMember = () => {
+  const handleAddMember = async () => {
     if (!newMember.name || !newMember.email) {
       alert('Please fill in required fields (Name and Email)!');
       return;
@@ -821,34 +948,57 @@ const LibraryApp = ({ user, onLogout }) => {
       name: newMember.name.trim(),
       email: newMember.email.trim(),
       phone: newMember.phone.trim() || '',
-      joinDate: new Date().toISOString().split('T')[0],
-      membershipType: newMember.membershipType
+      join_date: new Date().toISOString().split('T')[0],
+      membership_type: newMember.membershipType
     };
     
-    setMembers([...members, member]);
-    setNewMember({ name: '', email: '', phone: '', membershipType: 'Standard' });
-    alert(`Member "${member.name}" added successfully with ID: ${member.id}`);
+    try {
+      const { error } = await supabase
+        .from('members')
+        .insert([member]);
+      
+      if (error) throw error;
+      
+      setMembers([...members, member]);
+      setNewMember({ name: '', email: '', phone: '', membershipType: 'Standard' });
+      alert(`Member "${member.name}" added successfully with ID: ${member.id}`);
+    } catch (error) {
+      console.error('Error adding member:', error);
+      alert('Failed to add member. Please try again.');
+    }
   };
 
-  const handleDeleteMember = (memberId) => {
-    const activeLoans = loans.filter(loan => loan.memberId === memberId && loan.status === 'active');
+  const handleDeleteMember = async (memberId) => {
+    const activeLoans = loans.filter(loan => loan.member_id === memberId && loan.status === 'active');
     if (activeLoans.length > 0) {
       alert('Cannot delete member with active loans!');
       return;
     }
     
     if (window.confirm('Are you sure you want to delete this member?')) {
-      setMembers(members.filter(member => member.id !== memberId));
-      alert('Member deleted successfully!');
+      try {
+        const { error } = await supabase
+          .from('members')
+          .delete()
+          .eq('id', memberId);
+        
+        if (error) throw error;
+        
+        setMembers(members.filter(member => member.id !== memberId));
+        alert('Member deleted successfully!');
+      } catch (error) {
+        console.error('Error deleting member:', error);
+        alert('Failed to delete member. Please try again.');
+      }
     }
   };
 
   const getMemberLoans = (memberId) => {
     return loans
-      .filter(loan => loan.memberId === memberId && loan.status === 'active')
+      .filter(loan => loan.member_id === memberId && loan.status === 'active')
       .map(loan => ({
         ...loan,
-        book: findBook(loan.bookId)
+        book: findBook(loan.book_id)
       }))
       .filter(loan => loan.book);
   };
@@ -910,10 +1060,34 @@ const LibraryApp = ({ user, onLogout }) => {
       const text = await file.text();
       const data = JSON.parse(text);
       
-      if (data.books) setBooks(data.books);
-      if (data.members) setMembers(data.members);
-      if (data.loans) setLoans(data.loans);
-      if (data.settings) setSettings(data.settings);
+      // Import books
+      if (data.books && data.books.length > 0) {
+        const { error } = await supabase
+          .from('books')
+          .insert(data.books);
+        if (!error) setBooks(data.books);
+      }
+      
+      // Import members
+      if (data.members && data.members.length > 0) {
+        const { error } = await supabase
+          .from('members')
+          .insert(data.members);
+        if (!error) setMembers(data.members);
+      }
+      
+      // Import loans
+      if (data.loans && data.loans.length > 0) {
+        const { error } = await supabase
+          .from('loans')
+          .insert(data.loans);
+        if (!error) setLoans(data.loans);
+      }
+      
+      // Import settings
+      if (data.settings) {
+        await saveSettings(data.settings);
+      }
       
       alert('Data imported successfully!');
     } catch (error) {
@@ -958,7 +1132,7 @@ const LibraryApp = ({ user, onLogout }) => {
       
       const newBooks = [];
       
-      rows.forEach((row, index) => {
+      for (const row of rows) {
         try {
           const isbnRaw = row['ISBN'] || row['\'ISBN\''] || row['isbn'] || row['Isbn'] || row['Primary ISBN'] || '';
           const titleRaw = row['TITLE'] || row['Title'] || row['title'] || row['BOOK TITLE'] || '';
@@ -971,7 +1145,7 @@ const LibraryApp = ({ user, onLogout }) => {
           const category = String(categoryRaw).trim() || 'General';
           
           if (!title) {
-            return;
+            continue;
           }
           
           const finalAuthor = author || 'Unknown Author';
@@ -986,7 +1160,7 @@ const LibraryApp = ({ user, onLogout }) => {
             const existingBook = books.find(b => b.isbn === finalISBN);
             if (existingBook) {
               duplicatesSkipped++;
-              return;
+              continue;
             }
           }
           
@@ -1004,12 +1178,20 @@ const LibraryApp = ({ user, onLogout }) => {
           newBooksAdded++;
           
         } catch (error) {
-          console.error(`Error processing row ${index + 2}:`, error);
+          console.error(`Error processing row:`, error);
         }
-      });
+      }
       
       if (newBooks.length > 0) {
-        setBooks(prev => [...prev, ...newBooks]);
+        const { error } = await supabase
+          .from('books')
+          .insert(newBooks);
+        
+        if (!error) {
+          setBooks(prev => [...prev, ...newBooks]);
+        } else {
+          throw error;
+        }
       }
       
       let message = `Import Complete!\n\n`;
@@ -1086,10 +1268,10 @@ const LibraryApp = ({ user, onLogout }) => {
   const MainScreen = () => (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
       <div className="max-w-6xl mx-auto">
-        {apiError && (
+        {(apiError || dataError) && (
           <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-6 text-sm">
             <AlertCircle className="inline w-4 h-4 mr-2" />
-            {apiError}
+            {apiError || dataError}
           </div>
         )}
         
@@ -1195,6 +1377,8 @@ const LibraryApp = ({ user, onLogout }) => {
   );
 
   const renderScreen = () => {
+    if (loading) return <LoadingScreen />;
+    
     switch(currentScreen) {
       case 'loan': return (
         <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 p-6">
@@ -1241,7 +1425,7 @@ const LibraryApp = ({ user, onLogout }) => {
                       <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                         <div className="font-medium text-blue-800">{findMember(memberScanInput).name}</div>
                         <div className="text-sm text-blue-600">{findMember(memberScanInput).email}</div>
-                        <div className="text-sm text-blue-600">Type: {findMember(memberScanInput).membershipType}</div>
+                        <div className="text-sm text-blue-600">Type: {findMember(memberScanInput).membership_type}</div>
                       </div>
                     )}
                   </div>
@@ -1259,11 +1443,11 @@ const LibraryApp = ({ user, onLogout }) => {
                         <p className="text-gray-500 text-center py-8">No active loans</p>
                       ) : (
                         getMemberLoans(memberScanInput).map(loan => {
-                          const isOverdue = new Date().toISOString().split('T')[0] > loan.dueDate;
+                          const isOverdue = new Date().toISOString().split('T')[0] > loan.due_date;
                           return (
                             <div key={loan.id} className={`p-4 rounded-lg border-2 ${isOverdue ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
                               <div className="font-medium">{loan.book?.title}</div>
-                              <div className="text-sm text-gray-600">Due: {loan.dueDate} {isOverdue && <span className="text-red-600 font-medium">(OVERDUE)</span>}</div>
+                              <div className="text-sm text-gray-600">Due: {loan.due_date} {isOverdue && <span className="text-red-600 font-medium">(OVERDUE)</span>}</div>
                             </div>
                           );
                         })
@@ -1315,12 +1499,12 @@ const LibraryApp = ({ user, onLogout }) => {
                 <h3 className="text-xl font-semibold mb-4">Recent Returns</h3>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {loans.filter(loan => loan.status === 'returned').slice(0, 5).map(loan => {
-                    const book = findBook(loan.bookId);
-                    const member = findMember(loan.memberId);
+                    const book = findBook(loan.book_id);
+                    const member = findMember(loan.member_id);
                     return (
                       <div key={loan.id} className="bg-gray-50 p-3 rounded-lg">
                         <div className="font-medium">{book?.title}</div>
-                        <div className="text-sm text-gray-600">Returned by {member?.name} on {loan.returnDate}</div>
+                        <div className="text-sm text-gray-600">Returned by {member?.name} on {loan.return_date}</div>
                       </div>
                     );
                   })}
@@ -1353,29 +1537,6 @@ const LibraryApp = ({ user, onLogout }) => {
                   <button onClick={exportData} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
                     <Download className="w-4 h-4" />
                     Export
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (window.confirm('⚠️ DELETE ALL BOOKS?\n\nThis will permanently delete ALL books from the library.\n\nBooks with active loans cannot be deleted.\n\nAre you absolutely sure?')) {
-                        const booksWithLoans = books.filter(book => 
-                          loans.some(loan => loan.bookId === book.id && loan.status === 'active')
-                        );
-                        
-                        if (booksWithLoans.length > 0) {
-                          alert(`Cannot delete all books.\n\n${booksWithLoans.length} book(s) have active loans.\n\nReturn all books first, then try again.`);
-                          return;
-                        }
-                        
-                        if (window.confirm('FINAL WARNING: This cannot be undone!\n\nDelete all ' + books.length + ' books?')) {
-                          setBooks([]);
-                          alert('All books deleted successfully.');
-                        }
-                      }
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Delete All
                   </button>
                 </div>
               </div>
@@ -1425,19 +1586,13 @@ const LibraryApp = ({ user, onLogout }) => {
                               }
                             }
                           }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                            }
-                          }}
                           placeholder="ISBN *" 
                           className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-orange-500" 
                         />
-                        <button onClick={() => startBarcodeScanning('isbn')} className="px-4 py-3 bg-orange-500 text-white border border-orange-500 rounded-r-lg hover:bg-orange-600" title="Scan ISBN barcode with webcam">
+                        <button onClick={() => startBarcodeScanning('isbn')} className="px-4 py-3 bg-orange-500 text-white border border-orange-500 rounded-r-lg hover:bg-orange-600">
                           <Camera className="w-5 h-5" />
                         </button>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">Scan with barcode scanner - auto-fills automatically as you type!</p>
                     </div>
                     
                     <select value={newBook.category} onChange={(e) => setNewBook({...newBook, category: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
@@ -1467,7 +1622,7 @@ const LibraryApp = ({ user, onLogout }) => {
                       <p className="text-gray-500 text-center py-8">No books found</p>
                     ) : (
                       getFilteredBooks().map(book => {
-                        const activeLoans = loans.filter(loan => loan.bookId === book.id && loan.status === 'active').length;
+                        const activeLoans = loans.filter(loan => loan.book_id === book.id && loan.status === 'active').length;
                         return (
                           <div key={book.id} className="bg-gray-50 p-4 rounded-lg">
                             <div className="flex justify-between items-start">
@@ -1544,7 +1699,7 @@ const LibraryApp = ({ user, onLogout }) => {
                     ) : (
                       getFilteredMembers().map(member => {
                         const memberLoans = getMemberLoans(member.id);
-                        const memberOverdue = overdueItems.filter(item => item.memberId === member.id);
+                        const memberOverdue = overdueItems.filter(item => item.member_id === member.id);
                         return (
                           <div key={member.id} className="bg-gray-50 p-4 rounded-lg">
                             <div className="flex justify-between items-start">
@@ -1552,7 +1707,7 @@ const LibraryApp = ({ user, onLogout }) => {
                                 <div className="font-medium text-lg">{member.name}</div>
                                 <div className="text-gray-600">{member.email}</div>
                                 {member.phone && <div className="text-sm text-gray-500">{member.phone}</div>}
-                                <div className="text-sm text-gray-500 mt-1">ID: {member.id} | Type: {member.membershipType} | Joined: {member.joinDate}</div>
+                                <div className="text-sm text-gray-500 mt-1">ID: {member.id} | Type: {member.membership_type} | Joined: {member.join_date}</div>
                                 <div className="text-sm mt-1">
                                   <span className="text-blue-600">Active Loans: {memberLoans.length}/{settings.maxLoansPerMember}</span>
                                   {memberOverdue.length > 0 && <span className="ml-3 text-red-600">Overdue: {memberOverdue.length}</span>}
@@ -1632,10 +1787,10 @@ const LibraryApp = ({ user, onLogout }) => {
                   <h3 className="text-xl font-semibold mb-4">Member Statistics</h3>
                   <div className="space-y-2">
                     <p className="flex justify-between"><span>Total Members:</span> <span className="font-semibold">{members.length}</span></p>
-                    <p className="flex justify-between"><span>Active Borrowers:</span> <span className="font-semibold">{new Set(loans.filter(l => l.status === 'active').map(l => l.memberId)).size}</span></p>
+                    <p className="flex justify-between"><span>Active Borrowers:</span> <span className="font-semibold">{new Set(loans.filter(l => l.status === 'active').map(l => l.member_id)).size}</span></p>
                     <p className="flex justify-between"><span>New This Month:</span> <span className="font-semibold">
                       {members.filter(m => {
-                        const joinDate = new Date(m.joinDate);
+                        const joinDate = new Date(m.join_date);
                         const now = new Date();
                         return joinDate.getMonth() === now.getMonth() && joinDate.getFullYear() === now.getFullYear();
                       }).length}
@@ -1649,7 +1804,7 @@ const LibraryApp = ({ user, onLogout }) => {
                     <p className="flex justify-between"><span>Active Loans:</span> <span className="font-semibold">{loans.filter(loan => loan.status === 'active').length}</span></p>
                     <p className="flex justify-between"><span>Overdue Items:</span> <span className="font-semibold text-red-600">{overdueItems.length}</span></p>
                     <p className="flex justify-between"><span>Returns Today:</span> <span className="font-semibold">
-                      {loans.filter(loan => loan.returnDate === new Date().toISOString().split('T')[0]).length}
+                      {loans.filter(loan => loan.return_date === new Date().toISOString().split('T')[0]).length}
                     </span></p>
                     <p className="flex justify-between"><span>Total Returns:</span> <span className="font-semibold">{loans.filter(loan => loan.status === 'returned').length}</span></p>
                   </div>
@@ -1702,7 +1857,7 @@ const LibraryApp = ({ user, onLogout }) => {
                   <div className="grid grid-cols-1 gap-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Library Name</label>
-                      <input type="text" value={settings.libraryName} onChange={(e) => setSettings({...settings, libraryName: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input type="text" value={settings.libraryName} onChange={(e) => saveSettings({...settings, libraryName: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                   </div>
                 </div>
@@ -1712,40 +1867,13 @@ const LibraryApp = ({ user, onLogout }) => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Maximum loans per member</label>
-                      <input type="number" value={settings.maxLoansPerMember} onChange={(e) => setSettings({...settings, maxLoansPerMember: parseInt(e.target.value) || 10})} min="1" max="50" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input type="number" value={settings.maxLoansPerMember} onChange={(e) => saveSettings({...settings, maxLoansPerMember: parseInt(e.target.value) || 10})} min="1" max="50" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Loan period (days)</label>
-                      <input type="number" value={settings.loanPeriodDays} onChange={(e) => setSettings({...settings, loanPeriodDays: parseInt(e.target.value) || 14})} min="1" max="90" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input type="number" value={settings.loanPeriodDays} onChange={(e) => saveSettings({...settings, loanPeriodDays: parseInt(e.target.value) || 14})} min="1" max="90" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
-                  </div>
-                </div>
-                
-                <div>
-                  <h3 className="text-xl font-semibold mb-4">Features</h3>
-                  <div className="space-y-4">
-                    <label className="flex items-center">
-                      <input type="checkbox" checked={settings.allowReservations} onChange={(e) => setSettings({...settings, allowReservations: e.target.checked})} className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
-                      <span>Allow book reservations</span>
-                    </label>
-                    
-                    <label className="flex items-center">
-                      <input type="checkbox" checked={settings.autoReminders} onChange={(e) => setSettings({...settings, autoReminders: e.target.checked})} className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
-                      <span>Send automatic overdue reminders</span>
-                    </label>
-                    
-                    <label className="flex items-center">
-                      <input type="checkbox" checked={settings.enableFines} onChange={(e) => setSettings({...settings, enableFines: e.target.checked})} className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
-                      <span>Enable overdue fines (not recommended for church libraries)</span>
-                    </label>
-                    
-                    {settings.enableFines && (
-                      <div className="ml-6">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Fine per day ($)</label>
-                        <input type="number" value={settings.finePerDay} onChange={(e) => setSettings({...settings, finePerDay: parseFloat(e.target.value) || 0})} min="0" step="0.01" className="w-32 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      </div>
-                    )}
                   </div>
                 </div>
                 
@@ -1764,25 +1892,6 @@ const LibraryApp = ({ user, onLogout }) => {
                   </div>
                   <p className="text-sm text-gray-600 mt-2">Export creates a backup of all library data. Import allows you to restore from a previous backup.</p>
                 </div>
-                
-                <div className="pt-6 border-t border-gray-200">
-                  <button onClick={() => {
-                    if (window.confirm('This will reset all settings to defaults. Continue?')) {
-                      setSettings({
-                        libraryName: 'Bibliokeeper',
-                        maxLoansPerMember: 10,
-                        loanPeriodDays: 14,
-                        enableFines: false,
-                        finePerDay: 0.00,
-                        allowReservations: true,
-                        autoReminders: true
-                      });
-                      alert('Settings reset to defaults.');
-                    }
-                  }} className="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
-                    Reset to Defaults
-                  </button>
-                </div>
               </div>
             </div>
           </div>
@@ -1799,65 +1908,38 @@ const LibraryApp = ({ user, onLogout }) => {
 const Root = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      setLoading(false);
-      return;
-    }
+    checkUser();
+    
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+      } else {
+        setUser(null);
+      }
+    });
 
-    if (isPlaceholderConfig(firebaseConfig)) {
-      setAuthError("Firebase configuration is incomplete. Please set up environment variables.");
-      setLoading(false);
-      return;
-    }
-
-    const app = ensureFirebaseApp();
-    if (!app) {
-      setAuthError("Failed to initialize Firebase");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const auth = getAuth(app);
-      const unsubscribe = onAuthStateChanged(auth, 
-        (user) => {
-          setUser(user);
-          setLoading(false);
-        },
-        (error) => {
-          console.error("Auth state change error:", error);
-          setAuthError("Authentication service unavailable");
-          setLoading(false);
-        }
-      );
-
-      return () => unsubscribe();
-    } catch (error) {
-      console.error("Auth setup error:", error);
-      setAuthError("Failed to set up authentication");
-      setLoading(false);
-    }
+    return () => {
+      authListener?.subscription.unsubscribe();
+    };
   }, []);
+
+  const checkUser = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user || null);
+    } catch (error) {
+      console.error('Error checking user session:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogout = async () => {
     try {
-      const app = ensureFirebaseApp();
-      if (app) {
-        const auth = getAuth(app);
-        await signOut(auth);
-        setUser(null);
-        try {
-          localStorage.removeItem('bibliokeeper_books');
-          localStorage.removeItem('bibliokeeper_members');
-          localStorage.removeItem('bibliokeeper_loans');
-          localStorage.removeItem('bibliokeeper_settings');
-        } catch (e) {
-          console.error('Error clearing localStorage:', e);
-        }
-      }
+      await supabase.auth.signOut();
+      setUser(null);
     } catch (err) {
       console.error("Logout error:", err);
       alert("Error signing out. Please try again.");
@@ -1866,24 +1948,6 @@ const Root = () => {
 
   if (loading) {
     return <LoadingScreen />;
-  }
-
-  if (authError) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-red-50">
-        <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-md">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Configuration Error</h2>
-          <p className="text-gray-600 mb-4">{authError}</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
   }
 
   if (!user) {
