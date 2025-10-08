@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+  import React, { useEffect, useState, useRef, useCallback } from "react";
 import { createClient } from '@supabase/supabase-js';
 import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell, AlertCircle, LogIn } from 'lucide-react';
 
@@ -6,6 +6,80 @@ import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Sear
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || "https://zhyigfuzgdvdixvhuvgf.supabase.co";
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpoeWlnZnV6Z2R2ZGl4dmh1dmdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk3OTQ0NjMsImV4cCI6MjA3NTM3MDQ2M30.Lrq-akIdI5x2a4Bci9-K4x-OO8EJooMENZtCnLwG3-0";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+const VerificationScreen = ({ onVerified }) => {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [verified, setVerified] = useState(() => sessionStorage.getItem('libraryVerified') === 'true');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (password === 'infantjesus1231!') {
+      setError('');
+      setVerified(true);
+      sessionStorage.setItem('libraryVerified', 'true');
+      setPassword('');
+      setTimeout(() => {
+        if (typeof onVerified === 'function') {
+          onVerified();
+        }
+      }, 800);
+    } else {
+      setError('Incorrect password. Please try again.');
+      setPassword('');
+    }
+  };
+
+  if (verified) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-green-50 to-emerald-100">
+        <div className="bg-white p-8 rounded-2xl shadow-2xl text-center w-96">
+          <div className="text-green-600 text-6xl mb-4">✓</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Access Verified!</h2>
+          <p className="text-gray-600">You can now proceed to the login screen.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-900 to-indigo-900">
+      <div className="bg-white p-8 rounded-2xl shadow-2xl text-center w-96">
+        <div className="mb-6">
+          <Book className="w-16 h-16 text-blue-600 mx-auto mb-4" />
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">📚 Bibliokeeper</h1>
+          <p className="text-sm text-gray-600">Library Access Verification</p>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSubmit(e)}
+            placeholder="Enter access password"
+            autoFocus
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            onClick={handleSubmit}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold w-full transition-colors"
+          >
+            Verify Access
+          </button>
+        </div>
+
+        <p className="text-xs text-gray-500 mt-6">Authorized librarians only</p>
+      </div>
+    </div>
+  );
+};
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -1906,13 +1980,20 @@ const LibraryApp = ({ user, onLogout }) => {
 };
 
 const Root = () => {
+  const [verified, setVerified] = useState(() => sessionStorage.getItem('libraryVerified') === 'true');
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(verified);
 
   useEffect(() => {
+    if (!verified) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     checkUser();
     
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(session.user);
       } else {
@@ -1923,7 +2004,7 @@ const Root = () => {
     return () => {
       authListener?.subscription.unsubscribe();
     };
-  }, []);
+  }, [verified]);
 
   const checkUser = async () => {
     try {
@@ -1945,6 +2026,10 @@ const Root = () => {
       alert("Error signing out. Please try again.");
     }
   };
+
+  if (!verified) {
+    return <VerificationScreen onVerified={() => setVerified(true)} />;
+  }
 
   if (loading) {
     return <LoadingScreen />;
