@@ -2069,20 +2069,15 @@ const LibraryApp = ({ user, onLogout }) => {
 const Root = () => {
   const [verified, setVerified] = useState(() => sessionStorage.getItem('libraryVerified') === 'true');
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(verified);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!verified) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
     checkUser();
-    
+
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(session.user);
+        setVerified(true);
       } else {
         setUser(null);
       }
@@ -2091,12 +2086,15 @@ const Root = () => {
     return () => {
       authListener?.subscription.unsubscribe();
     };
-  }, [verified]);
+  }, []);
 
   const checkUser = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user || null);
+      if (session?.user) {
+        setUser(session.user);
+        setVerified(true);
+      }
     } catch (error) {
       console.error('Error checking user session:', error);
     } finally {
@@ -2114,7 +2112,7 @@ const Root = () => {
     }
   };
 
-  if (!verified) {
+  if (!user && !verified) {
     return <VerificationScreen onVerified={() => setVerified(true)} />;
   }
 
