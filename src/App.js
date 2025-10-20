@@ -2078,6 +2078,7 @@ const Root = () => {
       if (session?.user) {
         setUser(session.user);
         setVerified(true);
+        sessionStorage.setItem('libraryVerified', 'true');
       } else {
         setUser(null);
       }
@@ -2094,6 +2095,7 @@ const Root = () => {
       if (session?.user) {
         setUser(session.user);
         setVerified(true);
+        sessionStorage.setItem('libraryVerified', 'true');
       }
     } catch (error) {
       console.error('Error checking user session:', error);
@@ -2112,19 +2114,22 @@ const Root = () => {
     }
   };
 
-  if (!user && !verified) {
-    return <VerificationScreen onVerified={() => setVerified(true)} />;
-  }
-
   if (loading) {
     return <LoadingScreen />;
   }
 
-  if (!user) {
-    return <LoginScreen onLogin={setUser} />;
+  if (user) {
+    return <LibraryApp user={user} onLogout={handleLogout} />;
   }
 
-  return <LibraryApp user={user} onLogout={handleLogout} />;
+  if (!verified) {
+    return <VerificationScreen onVerified={() => {
+      sessionStorage.setItem('libraryVerified', 'true');
+      setVerified(true);
+    }} />;
+  }
+
+  return <LoginScreen onLogin={setUser} />;
 };
 
 const App = () => (
