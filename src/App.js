@@ -19,9 +19,11 @@ const VerificationScreen = ({ onVerified }) => {
       setVerified(true);
       sessionStorage.setItem('libraryVerified', 'true');
       setPassword('');
-      if (typeof onVerified === 'function') {
-        onVerified();
-      }
+      setTimeout(() => {
+        if (typeof onVerified === 'function') {
+          onVerified();
+        }
+      }, 800);
     } else {
       setError('Incorrect password. Please try again.');
       setPassword('');
@@ -1173,7 +1175,7 @@ const LibraryApp = ({ user, onLogout }) => {
   const importSpreadsheet = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
+    
     try {
       if (!window.XLSX) {
         await new Promise((resolve, reject) => {
@@ -1182,50 +1184,134 @@ const LibraryApp = ({ user, onLogout }) => {
           script.onload = resolve;
           script.onerror = reject;
           document.head.appendChild(script);
-        });
+        }
+
+
+// --- Import Members Spreadsheet Function ---
+const importMembersSpreadsheet = async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  try {
+    if (!window.XLSX) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+
+    const XLSX = window.XLSX;
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data, { type: 'array' });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+
+    if (rows.length === 0) {
+      alert('Spreadsheet is empty or could not be read.');
+      return;
+    }
+
+    let newMembersAdded = 0;
+    let duplicatesSkipped = 0;
+
+    const newMembersList = [];
+    for (const row of rows) {
+      const name = String(row['NAME'] || row['Name'] || '').trim();
+      const email = String(row['EMAIL'] || row['Email'] || '').trim();
+      const phone = String(row['PHONE'] || row['Phone'] || '').trim();
+      const type = String(row['TYPE'] || row['Type'] || 'Standard').trim();
+
+      if (!name || !email) continue;
+
+      if (members.some(m => m.email.toLowerCase() === email.toLowerCase())) {
+        duplicatesSkipped++;
+        continue;
       }
 
+      const newMember = {
+        id: generateId('M'),
+        name,
+        email,
+        phone,
+        join_date: new Date().toISOString().split('T')[0],
+        membership_type: type || 'Standard'
+      };
+
+      newMembersList.push(newMember);
+      newMembersAdded++;
+    }
+
+    if (newMembersList.length > 0) {
+      const { error } = await supabase.from('members').insert(newMembersList);
+      if (!error) {
+        setMembers(prev => [...prev, ...newMembersList]);
+      } else {
+        throw error;
+      }
+    }
+
+    let message = `Import Complete!\n\n`;
+    message += `✓ New members added: ${newMembersAdded}\n`;
+    message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
+    message += `\nTotal members: ${members.length + newMembersAdded}`;
+
+    alert(message);
+  } catch (error) {
+    console.error('Spreadsheet import error:', error);
+    alert('Error importing spreadsheet: ' + error.message);
+  }
+
+  event.target.value = '';
+};
+);
+      }
+      
       const XLSX = window.XLSX;
+      
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
+      
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
-
+      
       if (rows.length === 0) {
         alert('Spreadsheet is empty or could not be read.');
         return;
       }
-
+      
       let newBooksAdded = 0;
       let duplicatesSkipped = 0;
       let booksWithoutISBN = 0;
-
+      
       const newBooks = [];
-
+      
       for (const row of rows) {
         try {
           const isbnRaw = row['ISBN'] || row['\'ISBN\''] || row['isbn'] || row['Isbn'] || row['Primary ISBN'] || '';
           const titleRaw = row['TITLE'] || row['Title'] || row['title'] || row['BOOK TITLE'] || '';
           const authorRaw = row['AUTHOR'] || row['Author'] || row['author'] || row['AUTHORS'] || row['Primary Author'] || '';
           const categoryRaw = row['COLLECTIONS'] || row['Collections'] || row['Category'] || row['CATEGORY'] || 'General';
-
+          
           const isbn = String(isbnRaw).trim().replace(/[^0-9X]/gi, '');
           const title = String(titleRaw).trim();
           const author = String(authorRaw).trim();
           const category = String(categoryRaw).trim() || 'General';
-
+          
           if (!title) {
             continue;
           }
-
+          
           const finalAuthor = author || 'Unknown Author';
-
+          
           if (!isbn || isbn.length < 10) {
             booksWithoutISBN++;
           }
-
+          
           const finalISBN = (isbn && isbn.length >= 10) ? isbn : '';
-
+          
           if (finalISBN) {
             const existingBook = books.find(b => b.isbn === finalISBN);
             if (existingBook) {
@@ -1233,7 +1319,7 @@ const LibraryApp = ({ user, onLogout }) => {
               continue;
             }
           }
-
+          
           const book = {
             id: generateId('B'),
             title,
@@ -1243,26 +1329,27 @@ const LibraryApp = ({ user, onLogout }) => {
             available: 1,
             total: 1
           };
-
+          
           newBooks.push(book);
           newBooksAdded++;
+          
         } catch (error) {
-          console.error('Error processing row:', error);
+          console.error(`Error processing row:`, error);
         }
       }
-
+      
       if (newBooks.length > 0) {
         const { error } = await supabase
           .from('books')
           .insert(newBooks);
-
+        
         if (!error) {
           setBooks(prev => [...prev, ...newBooks]);
         } else {
           throw error;
         }
       }
-
+      
       let message = `Import Complete!\n\n`;
       message += `✓ New books added: ${newBooksAdded}\n`;
       message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
@@ -1270,92 +1357,14 @@ const LibraryApp = ({ user, onLogout }) => {
         message += `ℹ Books without ISBN: ${booksWithoutISBN} (still added)\n`;
       }
       message += `\nTotal books in library: ${books.length + newBooksAdded}`;
-
+      
       alert(message);
+      
     } catch (error) {
       console.error('Spreadsheet import error:', error);
       alert('Error importing spreadsheet: ' + error.message);
     }
-
-    event.target.value = '';
-  };
-
-  const importMembersSpreadsheet = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      if (!window.XLSX) {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
-
-      const XLSX = window.XLSX;
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
-
-      if (rows.length === 0) {
-        alert('Spreadsheet is empty or could not be read.');
-        return;
-      }
-
-      let newMembersAdded = 0;
-      let duplicatesSkipped = 0;
-
-      const newMembersList = [];
-      for (const row of rows) {
-        const name = String(row['NAME'] || row['Name'] || '').trim();
-        const email = String(row['EMAIL'] || row['Email'] || '').trim();
-        const phone = String(row['PHONE'] || row['Phone'] || '').trim();
-        const type = String(row['TYPE'] || row['Type'] || 'Standard').trim();
-
-        if (!name || !email) continue;
-
-        if (members.some(m => m.email.toLowerCase() === email.toLowerCase())) {
-          duplicatesSkipped++;
-          continue;
-        }
-
-        const newMember = {
-          id: generateId('M'),
-          name,
-          email,
-          phone,
-          join_date: new Date().toISOString().split('T')[0],
-          membership_type: type || 'Standard'
-        };
-
-        newMembersList.push(newMember);
-        newMembersAdded++;
-      }
-
-      if (newMembersList.length > 0) {
-        const { error } = await supabase.from('members').insert(newMembersList);
-        if (!error) {
-          setMembers(prev => [...prev, ...newMembersList]);
-        } else {
-          throw error;
-        }
-      }
-
-      let message = `Import Complete!\n\n`;
-      message += `✓ New members added: ${newMembersAdded}\n`;
-      message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
-      message += `\nTotal members: ${members.length + newMembersAdded}`;
-
-      alert(message);
-    } catch (error) {
-      console.error('Spreadsheet import error:', error);
-      alert('Error importing spreadsheet: ' + error.message);
-    }
-
+    
     event.target.value = '';
   };
 
@@ -1802,25 +1811,11 @@ const LibraryApp = ({ user, onLogout }) => {
         <div className="min-h-screen bg-gradient-to-br from-purple-50 to-violet-100 p-6">
           <div className="max-w-6xl mx-auto">
             <div className="bg-white rounded-xl shadow-lg p-8">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center">
-                  <button onClick={() => setCurrentScreen('main')} className="mr-4 p-2 hover:bg-gray-100 rounded-lg">
-                    <ArrowLeft className="w-6 h-6" />
-                  </button>
-                  <h2 className="text-3xl font-bold text-gray-800">Members Management</h2>
-                </div>
-                
-                <div className="flex gap-3">
-                  <label className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 cursor-pointer">
-                    <Upload className="w-4 h-4" />
-                    Import Spreadsheet
-                    <input type="file" accept=".xls,.xlsx" onChange={importMembersSpreadsheet} className="hidden" />
-                  </label>
-                  <button onClick={exportData} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
-                    <Download className="w-4 h-4" />
-                    Export
-                  </button>
-                </div>
+              <div className="flex items-center mb-6">
+                <button onClick={() => setCurrentScreen('main')} className="mr-4 p-2 hover:bg-gray-100 rounded-lg">
+                  <ArrowLeft className="w-6 h-6" />
+                </button>
+                <h2 className="text-3xl font-bold text-gray-800">Members Management</h2>
               </div>
               
               <div className="mb-6">
@@ -2069,16 +2064,20 @@ const LibraryApp = ({ user, onLogout }) => {
 const Root = () => {
   const [verified, setVerified] = useState(() => sessionStorage.getItem('libraryVerified') === 'true');
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(verified);
 
   useEffect(() => {
-    checkUser();
+    if (!verified) {
+      setLoading(false);
+      return;
+    }
 
+    setLoading(true);
+    checkUser();
+    
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(session.user);
-        setVerified(true);
-        sessionStorage.setItem('libraryVerified', 'true');
       } else {
         setUser(null);
       }
@@ -2087,16 +2086,12 @@ const Root = () => {
     return () => {
       authListener?.subscription.unsubscribe();
     };
-  }, []);
+  }, [verified]);
 
   const checkUser = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setUser(session.user);
-        setVerified(true);
-        sessionStorage.setItem('libraryVerified', 'true');
-      }
+      setUser(session?.user || null);
     } catch (error) {
       console.error('Error checking user session:', error);
     } finally {
@@ -2114,22 +2109,19 @@ const Root = () => {
     }
   };
 
+  if (!verified) {
+    return <VerificationScreen onVerified={() => setVerified(true)} />;
+  }
+
   if (loading) {
     return <LoadingScreen />;
   }
 
-  if (user) {
-    return <LibraryApp user={user} onLogout={handleLogout} />;
+  if (!user) {
+    return <LoginScreen onLogin={setUser} />;
   }
 
-  if (!verified) {
-    return <VerificationScreen onVerified={() => {
-      sessionStorage.setItem('libraryVerified', 'true');
-      setVerified(true);
-    }} />;
-  }
-
-  return <LoginScreen onLogin={setUser} />;
+  return <LibraryApp user={user} onLogout={handleLogout} />;
 };
 
 const App = () => (
