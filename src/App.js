@@ -19,11 +19,9 @@ const VerificationScreen = ({ onVerified }) => {
       setVerified(true);
       sessionStorage.setItem('libraryVerified', 'true');
       setPassword('');
-      setTimeout(() => {
-        if (typeof onVerified === 'function') {
-          onVerified();
-        }
-      }, 800);
+      if (typeof onVerified === 'function') {
+        onVerified();
+      }
     } else {
       setError('Incorrect password. Please try again.');
       setPassword('');
@@ -2138,3 +2136,4 @@ const App = () => (
 );
 
 export default App;
+v
