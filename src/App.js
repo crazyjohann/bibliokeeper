@@ -1175,7 +1175,7 @@ const LibraryApp = ({ user, onLogout }) => {
   const importSpreadsheet = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    
+
     try {
       if (!window.XLSX) {
         await new Promise((resolve, reject) => {
@@ -1184,134 +1184,50 @@ const LibraryApp = ({ user, onLogout }) => {
           script.onload = resolve;
           script.onerror = reject;
           document.head.appendChild(script);
-        }
-
-
-// --- Import Members Spreadsheet Function ---
-const importMembersSpreadsheet = async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-
-  try {
-    if (!window.XLSX) {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-    }
-
-    const XLSX = window.XLSX;
-    const data = await file.arrayBuffer();
-    const workbook = XLSX.read(data, { type: 'array' });
-    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
-
-    if (rows.length === 0) {
-      alert('Spreadsheet is empty or could not be read.');
-      return;
-    }
-
-    let newMembersAdded = 0;
-    let duplicatesSkipped = 0;
-
-    const newMembersList = [];
-    for (const row of rows) {
-      const name = String(row['NAME'] || row['Name'] || '').trim();
-      const email = String(row['EMAIL'] || row['Email'] || '').trim();
-      const phone = String(row['PHONE'] || row['Phone'] || '').trim();
-      const type = String(row['TYPE'] || row['Type'] || 'Standard').trim();
-
-      if (!name || !email) continue;
-
-      if (members.some(m => m.email.toLowerCase() === email.toLowerCase())) {
-        duplicatesSkipped++;
-        continue;
+        });
       }
 
-      const newMember = {
-        id: generateId('M'),
-        name,
-        email,
-        phone,
-        join_date: new Date().toISOString().split('T')[0],
-        membership_type: type || 'Standard'
-      };
-
-      newMembersList.push(newMember);
-      newMembersAdded++;
-    }
-
-    if (newMembersList.length > 0) {
-      const { error } = await supabase.from('members').insert(newMembersList);
-      if (!error) {
-        setMembers(prev => [...prev, ...newMembersList]);
-      } else {
-        throw error;
-      }
-    }
-
-    let message = `Import Complete!\n\n`;
-    message += `✓ New members added: ${newMembersAdded}\n`;
-    message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
-    message += `\nTotal members: ${members.length + newMembersAdded}`;
-
-    alert(message);
-  } catch (error) {
-    console.error('Spreadsheet import error:', error);
-    alert('Error importing spreadsheet: ' + error.message);
-  }
-
-  event.target.value = '';
-};
-);
-      }
-      
       const XLSX = window.XLSX;
-      
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
-      
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
-      
+
       if (rows.length === 0) {
         alert('Spreadsheet is empty or could not be read.');
         return;
       }
-      
+
       let newBooksAdded = 0;
       let duplicatesSkipped = 0;
       let booksWithoutISBN = 0;
-      
+
       const newBooks = [];
-      
+
       for (const row of rows) {
         try {
           const isbnRaw = row['ISBN'] || row['\'ISBN\''] || row['isbn'] || row['Isbn'] || row['Primary ISBN'] || '';
           const titleRaw = row['TITLE'] || row['Title'] || row['title'] || row['BOOK TITLE'] || '';
           const authorRaw = row['AUTHOR'] || row['Author'] || row['author'] || row['AUTHORS'] || row['Primary Author'] || '';
           const categoryRaw = row['COLLECTIONS'] || row['Collections'] || row['Category'] || row['CATEGORY'] || 'General';
-          
+
           const isbn = String(isbnRaw).trim().replace(/[^0-9X]/gi, '');
           const title = String(titleRaw).trim();
           const author = String(authorRaw).trim();
           const category = String(categoryRaw).trim() || 'General';
-          
+
           if (!title) {
             continue;
           }
-          
+
           const finalAuthor = author || 'Unknown Author';
-          
+
           if (!isbn || isbn.length < 10) {
             booksWithoutISBN++;
           }
-          
+
           const finalISBN = (isbn && isbn.length >= 10) ? isbn : '';
-          
+
           if (finalISBN) {
             const existingBook = books.find(b => b.isbn === finalISBN);
             if (existingBook) {
@@ -1319,7 +1235,7 @@ const importMembersSpreadsheet = async (event) => {
               continue;
             }
           }
-          
+
           const book = {
             id: generateId('B'),
             title,
@@ -1329,27 +1245,26 @@ const importMembersSpreadsheet = async (event) => {
             available: 1,
             total: 1
           };
-          
+
           newBooks.push(book);
           newBooksAdded++;
-          
         } catch (error) {
-          console.error(`Error processing row:`, error);
+          console.error('Error processing row:', error);
         }
       }
-      
+
       if (newBooks.length > 0) {
         const { error } = await supabase
           .from('books')
           .insert(newBooks);
-        
+
         if (!error) {
           setBooks(prev => [...prev, ...newBooks]);
         } else {
           throw error;
         }
       }
-      
+
       let message = `Import Complete!\n\n`;
       message += `✓ New books added: ${newBooksAdded}\n`;
       message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
@@ -1357,14 +1272,92 @@ const importMembersSpreadsheet = async (event) => {
         message += `ℹ Books without ISBN: ${booksWithoutISBN} (still added)\n`;
       }
       message += `\nTotal books in library: ${books.length + newBooksAdded}`;
-      
+
       alert(message);
-      
     } catch (error) {
       console.error('Spreadsheet import error:', error);
       alert('Error importing spreadsheet: ' + error.message);
     }
-    
+
+    event.target.value = '';
+  };
+
+  const importMembersSpreadsheet = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      if (!window.XLSX) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      const XLSX = window.XLSX;
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+
+      if (rows.length === 0) {
+        alert('Spreadsheet is empty or could not be read.');
+        return;
+      }
+
+      let newMembersAdded = 0;
+      let duplicatesSkipped = 0;
+
+      const newMembersList = [];
+      for (const row of rows) {
+        const name = String(row['NAME'] || row['Name'] || '').trim();
+        const email = String(row['EMAIL'] || row['Email'] || '').trim();
+        const phone = String(row['PHONE'] || row['Phone'] || '').trim();
+        const type = String(row['TYPE'] || row['Type'] || 'Standard').trim();
+
+        if (!name || !email) continue;
+
+        if (members.some(m => m.email.toLowerCase() === email.toLowerCase())) {
+          duplicatesSkipped++;
+          continue;
+        }
+
+        const newMember = {
+          id: generateId('M'),
+          name,
+          email,
+          phone,
+          join_date: new Date().toISOString().split('T')[0],
+          membership_type: type || 'Standard'
+        };
+
+        newMembersList.push(newMember);
+        newMembersAdded++;
+      }
+
+      if (newMembersList.length > 0) {
+        const { error } = await supabase.from('members').insert(newMembersList);
+        if (!error) {
+          setMembers(prev => [...prev, ...newMembersList]);
+        } else {
+          throw error;
+        }
+      }
+
+      let message = `Import Complete!\n\n`;
+      message += `✓ New members added: ${newMembersAdded}\n`;
+      message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
+      message += `\nTotal members: ${members.length + newMembersAdded}`;
+
+      alert(message);
+    } catch (error) {
+      console.error('Spreadsheet import error:', error);
+      alert('Error importing spreadsheet: ' + error.message);
+    }
+
     event.target.value = '';
   };
 
