@@ -1184,7 +1184,89 @@ const LibraryApp = ({ user, onLogout }) => {
           script.onload = resolve;
           script.onerror = reject;
           document.head.appendChild(script);
-        });
+        }
+
+
+// --- Import Members Spreadsheet Function ---
+const importMembersSpreadsheet = async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  try {
+    if (!window.XLSX) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+
+    const XLSX = window.XLSX;
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data, { type: 'array' });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+
+    if (rows.length === 0) {
+      alert('Spreadsheet is empty or could not be read.');
+      return;
+    }
+
+    let newMembersAdded = 0;
+    let duplicatesSkipped = 0;
+
+    const newMembersList = [];
+    for (const row of rows) {
+      const name = String(row['NAME'] || row['Name'] || '').trim();
+      const email = String(row['EMAIL'] || row['Email'] || '').trim();
+      const phone = String(row['PHONE'] || row['Phone'] || '').trim();
+      const type = String(row['TYPE'] || row['Type'] || 'Standard').trim();
+
+      if (!name || !email) continue;
+
+      if (members.some(m => m.email.toLowerCase() === email.toLowerCase())) {
+        duplicatesSkipped++;
+        continue;
+      }
+
+      const newMember = {
+        id: generateId('M'),
+        name,
+        email,
+        phone,
+        join_date: new Date().toISOString().split('T')[0],
+        membership_type: type || 'Standard'
+      };
+
+      newMembersList.push(newMember);
+      newMembersAdded++;
+    }
+
+    if (newMembersList.length > 0) {
+      const { error } = await supabase.from('members').insert(newMembersList);
+      if (!error) {
+        setMembers(prev => [...prev, ...newMembersList]);
+      } else {
+        throw error;
+      }
+    }
+
+    let message = `Import Complete!\n\n`;
+    message += `✓ New members added: ${newMembersAdded}\n`;
+    message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
+    message += `\nTotal members: ${members.length + newMembersAdded}`;
+
+    alert(message);
+  } catch (error) {
+    console.error('Spreadsheet import error:', error);
+    alert('Error importing spreadsheet: ' + error.message);
+  }
+
+  event.target.value = '';
+};
+);
       }
       
       const XLSX = window.XLSX;
@@ -1729,11 +1811,25 @@ const LibraryApp = ({ user, onLogout }) => {
         <div className="min-h-screen bg-gradient-to-br from-purple-50 to-violet-100 p-6">
           <div className="max-w-6xl mx-auto">
             <div className="bg-white rounded-xl shadow-lg p-8">
-              <div className="flex items-center mb-6">
-                <button onClick={() => setCurrentScreen('main')} className="mr-4 p-2 hover:bg-gray-100 rounded-lg">
-                  <ArrowLeft className="w-6 h-6" />
-                </button>
-                <h2 className="text-3xl font-bold text-gray-800">Members Management</h2>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center">
+                  <button onClick={() => setCurrentScreen('main')} className="mr-4 p-2 hover:bg-gray-100 rounded-lg">
+                    <ArrowLeft className="w-6 h-6" />
+                  </button>
+                  <h2 className="text-3xl font-bold text-gray-800">Members Management</h2>
+                </div>
+                
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 cursor-pointer">
+                    <Upload className="w-4 h-4" />
+                    Import Spreadsheet
+                    <input type="file" accept=".xls,.xlsx" onChange={importMembersSpreadsheet} className="hidden" />
+                  </label>
+                  <button onClick={exportData} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
+                    <Download className="w-4 h-4" />
+                    Export
+                  </button>
+                </div>
               </div>
               
               <div className="mb-6">
