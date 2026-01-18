@@ -255,7 +255,7 @@ const LibraryApp = ({ user, onLogout }) => {
   const [scanInput, setScanInput] = useState('');
   const [memberScanInput, setMemberScanInput] = useState('');
   const [newBook, setNewBook] = useState({ title: '', author: '', isbn: '', category: '', quantity: 1 });
-  const [newMember, setNewMember] = useState({ name: '', email: '', phone: '', membershipType: 'Standard' });
+  const [newMember, setNewMember] = useState({ name: '', cardNumber: '' });
   const [searchQuery, setSearchQuery] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [scanningFor, setScanningFor] = useState(null);
@@ -266,12 +266,9 @@ const LibraryApp = ({ user, onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState(null);
   
-  const videoRef = useRef(null);
   const scanTimeoutRef = useRef(null);
   const isScanningRef = useRef(false);
-  const streamRef = useRef(null);
-  const quaggaRef = useRef(null);
-  const quaggaOnDetectedRef = useRef(null);
+  const html5QrcodeRef = useRef(null);
   
   const [settings, setSettings] = useState({
     libraryName: 'Bibliokeeper',
@@ -486,7 +483,7 @@ const LibraryApp = ({ user, onLogout }) => {
     }
   };
 
-  const startBarcodeScanning = async (type) => {
+  const startBarcodeScanning = (type) => {
     setScanningFor(type);
     setIsScanning(true);
     setCameraError(null);
@@ -498,155 +495,65 @@ const LibraryApp = ({ user, onLogout }) => {
       setNewBook({ title: '', author: '', isbn: '', category: '', quantity: 1 });
     }
     
+    if (scanTimeoutRef.current) {
+      clearTimeout(scanTimeoutRef.current);
+    }
+    
     scanTimeoutRef.current = setTimeout(() => {
       stopBarcodeScanning();
       alert('Scanning timed out after 30 seconds. Please try again.');
     }, 30000);
-    
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const hasCamera = devices.some(device => device.kind === 'videoinput');
-      
-      if (!hasCamera) {
-        setCameraError("No webcam detected. Please use your physical USB barcode scanner by typing/scanning directly into the input field, then press Tab.");
-        return;
-      }
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 }
-        } 
-      });
-      
-      if (videoRef.current && isScanningRef.current) {
-        streamRef.current = stream;
-        videoRef.current.srcObject = stream;
-        
-        try {
-          await videoRef.current.play();
-          startQuaggaScanning();
-        } catch (playError) {
-          console.error('Video play error:', playError);
-          setCameraError("Could not start video playback. Use your physical barcode scanner instead.");
-        }
-      } else {
-        stream.getTracks().forEach(track => track.stop());
-      }
-    } catch (err) {
-      console.error('Camera error:', err);
-      let errorMessage = "Camera not available. Use your physical USB barcode scanner by typing/scanning in the input field.";
-      
-      if (err.name === 'NotAllowedError') {
-        errorMessage = "Camera access denied. Use your physical barcode scanner instead.";
-      } else if (err.name === 'NotFoundError') {
-        errorMessage = "No webcam found. Use your physical barcode scanner instead.";
-      } else if (err.name === 'NotReadableError') {
-        errorMessage = "Camera is in use. Use your physical barcode scanner instead.";
-      }
-      
-      setCameraError(errorMessage);
-    }
   };
 
-  const startQuaggaScanning = async () => {
-    if (!videoRef.current || typeof window === 'undefined') {
-      console.warn('Video element not ready for scanning');
-      stopBarcodeScanning();
+  const startHtml5QrcodeScanning = async () => {
+    if (typeof window === 'undefined') {
       return;
     }
 
     try {
-      if (!window.Quagga) {
+      if (!window.Html5Qrcode) {
         await new Promise((resolve, reject) => {
           const script = document.createElement('script');
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js';
+          script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
           script.onload = resolve;
           script.onerror = reject;
           document.head.appendChild(script);
         });
       }
 
-      const Quagga = window.Quagga;
+      const Html5Qrcode = window.Html5Qrcode;
 
-      if (!Quagga || typeof Quagga.init !== 'function') {
-        console.error('Quagga library did not load correctly');
-        setCameraError('Barcode detection library failed to load. Please refresh and try again.');
+      if (!Html5Qrcode) {
+        setCameraError('Barcode scanner library failed to load. Please refresh and try again.');
         stopBarcodeScanning();
         return;
       }
 
-      if (quaggaRef.current && quaggaOnDetectedRef.current) {
+      if (html5QrcodeRef.current) {
         try {
-          quaggaRef.current.offDetected(quaggaOnDetectedRef.current);
-          quaggaRef.current.stop();
+          await html5QrcodeRef.current.stop();
+          await html5QrcodeRef.current.clear();
         } catch (cleanupError) {
-          console.warn('Error cleaning up previous Quagga instance:', cleanupError);
+          console.error('Error cleaning up previous Html5Qrcode instance:', cleanupError);
         }
       }
 
-      quaggaRef.current = Quagga;
+      html5QrcodeRef.current = new Html5Qrcode('html5-qrcode-scanner');
 
-      Quagga.init({
-        inputStream: {
-          name: 'Live',
-          type: 'LiveStream',
-          target: videoRef.current,
-          constraints: {
-            facingMode: 'environment',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+      await html5QrcodeRef.current.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          if (decodedText && decodedText !== lastScannedBarcode) {
+            setLastScannedBarcode(decodedText);
+            handleBarcodeDetected(decodedText);
           }
         },
-        locator: {
-          patchSize: 'medium',
-          halfSample: true
-        },
-        decoder: {
-          readers: [
-            'ean_reader',
-            'ean_8_reader', 
-            'upc_reader',
-            'upc_e_reader',
-            'code_128_reader',
-            'code_39_reader'
-          ]
-        },
-        locate: true,
-        debug: false
-      }, (err) => {
-        if (err) {
-          console.error('Quagga initialization error:', err);
-          setCameraError('Barcode detection failed to initialize. Please try again.');
-          stopBarcodeScanning();
-          return;
-        }
-
-        if (!isScanningRef.current) {
-          Quagga.stop();
-          return;
-        }
-
-        Quagga.start();
-        console.log('Quagga started successfully');
-      });
-
-      const onDetected = (data) => {
-        const detectedCode = data?.codeResult?.code;
-        if (detectedCode && detectedCode !== lastScannedBarcode) {
-          console.log('Barcode detected:', detectedCode);
-          setLastScannedBarcode(detectedCode);
-          handleBarcodeDetected(detectedCode);
-        }
-      };
-
-      Quagga.onDetected(onDetected);
-      quaggaOnDetectedRef.current = onDetected;
-
+        () => {}
+      );
     } catch (error) {
-      console.error('Error loading Quagga for barcode scanning:', error);
-      setCameraError('Barcode detection is unavailable. Please refresh the page and try again.');
+      console.error('Error starting Html5Qrcode scanning:', error);
+      setCameraError('Barcode scanner could not be started. Please check camera permissions.');
       stopBarcodeScanning();
     }
   };
@@ -727,27 +634,14 @@ const LibraryApp = ({ user, onLogout }) => {
     
     isScanningRef.current = false;
     
-    if (quaggaRef.current) {
-      try {
-        if (quaggaOnDetectedRef.current) {
-          quaggaRef.current.offDetected(quaggaOnDetectedRef.current);
-        }
-        quaggaRef.current.stop();
-      } catch (error) {
-        console.error('Error stopping Quagga:', error);
-      } finally {
-        quaggaRef.current = null;
-        quaggaOnDetectedRef.current = null;
-      }
-    }
-    
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+    if (html5QrcodeRef.current) {
+      html5QrcodeRef.current
+        .stop()
+        .then(() => html5QrcodeRef.current.clear())
+        .catch(error => console.error('Error stopping Html5Qrcode:', error))
+        .finally(() => {
+          html5QrcodeRef.current = null;
+        });
     }
     
     setIsScanning(false);
@@ -762,24 +656,23 @@ const LibraryApp = ({ user, onLogout }) => {
         clearTimeout(scanTimeoutRef.current);
       }
       isScanningRef.current = false;
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (quaggaRef.current) {
-        try {
-          if (quaggaOnDetectedRef.current) {
-            quaggaRef.current.offDetected(quaggaOnDetectedRef.current);
-          }
-          quaggaRef.current.stop();
-        } catch (error) {
-          console.error('Error stopping Quagga during cleanup:', error);
-        } finally {
-          quaggaRef.current = null;
-          quaggaOnDetectedRef.current = null;
-        }
+      if (html5QrcodeRef.current) {
+        html5QrcodeRef.current
+          .stop()
+          .then(() => html5QrcodeRef.current.clear())
+          .catch(error => console.error('Error stopping Html5Qrcode during cleanup:', error))
+          .finally(() => {
+            html5QrcodeRef.current = null;
+          });
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (isScanning) {
+      startHtml5QrcodeScanning();
+    }
+  }, [isScanning]);
 
   const calculateDueDate = (loanDate, days = settings.loanPeriodDays) => {
     const date = new Date(loanDate);
@@ -1001,29 +894,23 @@ const LibraryApp = ({ user, onLogout }) => {
   };
 
   const handleAddMember = async () => {
-    if (!newMember.name || !newMember.email) {
-      alert('Please fill in required fields (Name and Email)!');
+    if (!newMember.name || !newMember.cardNumber) {
+      alert('Please fill in required fields (Name and Library Card Number)!');
       return;
     }
-    
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newMember.email)) {
-      alert('Please enter a valid email address!');
-      return;
-    }
-    
-    if (members.some(member => member.email.toLowerCase() === newMember.email.toLowerCase())) {
-      alert('A member with this email already exists!');
+
+    if (members.some(member => member.id === newMember.cardNumber.trim())) {
+      alert('A member with this library card number already exists!');
       return;
     }
     
     const member = {
-      id: generateId('M'),
+      id: newMember.cardNumber.trim(),
       name: newMember.name.trim(),
-      email: newMember.email.trim(),
-      phone: newMember.phone.trim() || '',
+      email: '',
+      phone: '',
       join_date: new Date().toISOString().split('T')[0],
-      membership_type: newMember.membershipType
+      membership_type: ''
     };
     
     try {
@@ -1034,8 +921,8 @@ const LibraryApp = ({ user, onLogout }) => {
       if (error) throw error;
       
       setMembers([...members, member]);
-      setNewMember({ name: '', email: '', phone: '', membershipType: 'Standard' });
-      alert(`Member "${member.name}" added successfully with ID: ${member.id}`);
+      setNewMember({ name: '', cardNumber: '' });
+      alert(`Member "${member.name}" added successfully with Library Card: ${member.id}`);
     } catch (error) {
       console.error('Error adding member:', error);
       alert('Failed to add member. Please try again.');
@@ -1094,7 +981,6 @@ const LibraryApp = ({ user, onLogout }) => {
     const query = searchQuery.toLowerCase();
     return members.filter(member => 
       member.name.toLowerCase().includes(query) ||
-      member.email.toLowerCase().includes(query) ||
       member.id.toLowerCase().includes(query)
     );
   };
@@ -1184,96 +1070,12 @@ const LibraryApp = ({ user, onLogout }) => {
           script.onload = resolve;
           script.onerror = reject;
           document.head.appendChild(script);
-        }
-
-
-// --- Import Members Spreadsheet Function ---
-const importMembersSpreadsheet = async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-
-  try {
-    if (!window.XLSX) {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-    }
-
-    const XLSX = window.XLSX;
-    const data = await file.arrayBuffer();
-    const workbook = XLSX.read(data, { type: 'array' });
-    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
-
-    if (rows.length === 0) {
-      alert('Spreadsheet is empty or could not be read.');
-      return;
-    }
-
-    let newMembersAdded = 0;
-    let duplicatesSkipped = 0;
-
-    const newMembersList = [];
-    for (const row of rows) {
-      const name = String(row['NAME'] || row['Name'] || '').trim();
-      const email = String(row['EMAIL'] || row['Email'] || '').trim();
-      const phone = String(row['PHONE'] || row['Phone'] || '').trim();
-      const type = String(row['TYPE'] || row['Type'] || 'Standard').trim();
-
-      if (!name || !email) continue;
-
-      if (members.some(m => m.email.toLowerCase() === email.toLowerCase())) {
-        duplicatesSkipped++;
-        continue;
-      }
-
-      const newMember = {
-        id: generateId('M'),
-        name,
-        email,
-        phone,
-        join_date: new Date().toISOString().split('T')[0],
-        membership_type: type || 'Standard'
-      };
-
-      newMembersList.push(newMember);
-      newMembersAdded++;
-    }
-
-    if (newMembersList.length > 0) {
-      const { error } = await supabase.from('members').insert(newMembersList);
-      if (!error) {
-        setMembers(prev => [...prev, ...newMembersList]);
-      } else {
-        throw error;
-      }
-    }
-
-    let message = `Import Complete!\n\n`;
-    message += `✓ New members added: ${newMembersAdded}\n`;
-    message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
-    message += `\nTotal members: ${members.length + newMembersAdded}`;
-
-    alert(message);
-  } catch (error) {
-    console.error('Spreadsheet import error:', error);
-    alert('Error importing spreadsheet: ' + error.message);
-  }
-
-  event.target.value = '';
-};
-);
+        });
       }
       
       const XLSX = window.XLSX;
-      
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
-      
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
       
@@ -1368,6 +1170,85 @@ const importMembersSpreadsheet = async (event) => {
     event.target.value = '';
   };
 
+  const importMembersSpreadsheet = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      if (!window.XLSX) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      const XLSX = window.XLSX;
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+
+      if (rows.length === 0) {
+        alert('Spreadsheet is empty or could not be read.');
+        return;
+      }
+
+      let newMembersAdded = 0;
+      let duplicatesSkipped = 0;
+
+      const newMembersList = [];
+      for (const row of rows) {
+        const name = String(row['NAME'] || row['Name'] || '').trim();
+        const email = String(row['EMAIL'] || row['Email'] || '').trim();
+        const phone = String(row['PHONE'] || row['Phone'] || '').trim();
+        const type = String(row['TYPE'] || row['Type'] || 'Standard').trim();
+
+        if (!name || !email) continue;
+
+        if (members.some(m => m.email.toLowerCase() === email.toLowerCase())) {
+          duplicatesSkipped++;
+          continue;
+        }
+
+        const newMember = {
+          id: generateId('M'),
+          name,
+          email,
+          phone,
+          join_date: new Date().toISOString().split('T')[0],
+          membership_type: type || 'Standard'
+        };
+
+        newMembersList.push(newMember);
+        newMembersAdded++;
+      }
+
+      if (newMembersList.length > 0) {
+        const { error } = await supabase.from('members').insert(newMembersList);
+        if (!error) {
+          setMembers(prev => [...prev, ...newMembersList]);
+        } else {
+          throw error;
+        }
+      }
+
+      let message = `Import Complete!\n\n`;
+      message += `✓ New members added: ${newMembersAdded}\n`;
+      message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
+      message += `\nTotal members: ${members.length + newMembersAdded}`;
+
+      alert(message);
+    } catch (error) {
+      console.error('Spreadsheet import error:', error);
+      alert('Error importing spreadsheet: ' + error.message);
+    }
+
+    event.target.value = '';
+  };
+
   const BarcodeScannerModal = () => (
     isScanning && (
       <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
@@ -1394,17 +1275,10 @@ const importMembersSpreadsheet = async (event) => {
           )}
           
           <div className="relative mb-4">
-            <video 
-              ref={videoRef}
-              className="w-full h-64 bg-black rounded-lg object-cover"
-              autoPlay 
-              playsInline 
-              muted
+            <div
+              id="html5-qrcode-scanner"
+              className="w-full h-64 bg-black rounded-lg"
             />
-            <div className="absolute inset-0 border-2 border-red-500 rounded-lg pointer-events-none">
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-1 bg-red-500"></div>
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1 h-32 bg-red-500"></div>
-            </div>
           </div>
           
           <div className="flex gap-3">
@@ -1581,7 +1455,6 @@ const importMembersSpreadsheet = async (event) => {
                       <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                         <div className="font-medium text-blue-800">{findMember(memberScanInput).name}</div>
                         <div className="text-sm text-blue-600">{findMember(memberScanInput).email}</div>
-                        <div className="text-sm text-blue-600">Type: {findMember(memberScanInput).membership_type}</div>
                       </div>
                     )}
                   </div>
@@ -1832,14 +1705,20 @@ const importMembersSpreadsheet = async (event) => {
                     Add New Member
                   </h3>
                   <div className="space-y-4">
-                    <input type="text" value={newMember.name} onChange={(e) => setNewMember({...newMember, name: e.target.value})} placeholder="Full Name *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                    <input type="email" value={newMember.email} onChange={(e) => setNewMember({...newMember, email: e.target.value})} placeholder="Email Address *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                    <input type="tel" value={newMember.phone} onChange={(e) => setNewMember({...newMember, phone: e.target.value})} placeholder="Phone Number" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                    <select value={newMember.membershipType} onChange={(e) => setNewMember({...newMember, membershipType: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
-                      <option value="Standard">Standard</option>
-                      <option value="Student">Student</option>
-                      <option value="Senior">Senior</option>
-                    </select>
+                    <input
+                      type="text"
+                      value={newMember.name}
+                      onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
+                      placeholder="First and Last Name *"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                    <input
+                      type="text"
+                      value={newMember.cardNumber}
+                      onChange={(e) => setNewMember({ ...newMember, cardNumber: e.target.value })}
+                      placeholder="Library Card Number *"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
                     <button onClick={handleAddMember} className="w-full bg-purple-500 hover:bg-purple-600 text-white py-3 rounded-lg font-semibold">Add Member</button>
                   </div>
                 </div>
@@ -1863,7 +1742,7 @@ const importMembersSpreadsheet = async (event) => {
                                 <div className="font-medium text-lg">{member.name}</div>
                                 <div className="text-gray-600">{member.email}</div>
                                 {member.phone && <div className="text-sm text-gray-500">{member.phone}</div>}
-                                <div className="text-sm text-gray-500 mt-1">ID: {member.id} | Type: {member.membership_type} | Joined: {member.join_date}</div>
+                                <div className="text-sm text-gray-500 mt-1">ID: {member.id} | Joined: {member.join_date}</div>
                                 <div className="text-sm mt-1">
                                   <span className="text-blue-600">Active Loans: {memberLoans.length}/{settings.maxLoansPerMember}</span>
                                   {memberOverdue.length > 0 && <span className="ml-3 text-red-600">Overdue: {memberOverdue.length}</span>}
