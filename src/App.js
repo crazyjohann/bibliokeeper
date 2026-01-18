@@ -600,24 +600,22 @@ const LibraryApp = ({ user, onLogout }) => {
     } else if (scanningFor === 'member') {
       setMemberScanInput(cleanBarcode);
     } else if (scanningFor === 'isbn') {
-      const bookInfo = await fetchBookInfoFromAPI(cleanBarcode);
-      if (bookInfo) {
-        setNewBook({
-          title: bookInfo.title,
-          author: bookInfo.author,
-          isbn: cleanBarcode,
-          category: bookInfo.category,
-          quantity: 1
-        });
-        stopBarcodeScanning();
-        alert(`Book information found and auto-filled!\nTitle: ${bookInfo.title}\nAuthor: ${bookInfo.author}`);
-        return;
-      } else {
-        setNewBook(prev => ({ ...prev, isbn: cleanBarcode }));
-        stopBarcodeScanning();
-        alert(`ISBN detected: ${cleanBarcode}\nCould not fetch book details automatically. Please fill in the remaining fields.`);
-        return;
+      setNewBook(prev => ({ ...prev, isbn: cleanBarcode }));
+      stopBarcodeScanning();
+      try {
+        const bookInfo = await fetchBookInfoFromAPI(cleanBarcode);
+        if (bookInfo) {
+          setNewBook(prev => ({
+            ...prev,
+            title: prev.title || bookInfo.title,
+            author: prev.author || bookInfo.author,
+            category: prev.category || bookInfo.category,
+            quantity: prev.quantity || 1
+          }));
+        }
+      } catch {
       }
+      return;
     }
     
     stopBarcodeScanning();
@@ -1285,9 +1283,8 @@ const LibraryApp = ({ user, onLogout }) => {
             <button 
               onClick={stopBarcodeScanning} 
               className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-lg font-semibold transition-colors"
-              disabled={isLoadingBookData}
             >
-              {isLoadingBookData ? 'Processing...' : 'Cancel'}
+              Cancel
             </button>
           </div>
         </div>
