@@ -1196,28 +1196,46 @@ const LibraryApp = ({ user, onLogout }) => {
 
       let newMembersAdded = 0;
       let duplicatesSkipped = 0;
+      let rowsSkipped = 0;
 
       const newMembersList = [];
       for (const row of rows) {
-        const name = String(row['NAME'] || row['Name'] || '').trim();
-        const email = String(row['EMAIL'] || row['Email'] || '').trim();
-        const phone = String(row['PHONE'] || row['Phone'] || '').trim();
-        const type = String(row['TYPE'] || row['Type'] || 'Standard').trim();
+        const name = String(
+          row['NAME'] ||
+          row['Name'] ||
+          row['Full Name'] ||
+          row['Member Name'] ||
+          ''
+        ).trim();
 
-        if (!name || !email) continue;
+        const cardNumber = String(
+          row['LIBRARY CARD NUMBER'] ||
+          row['Library Card Number'] ||
+          row['CARD NUMBER'] ||
+          row['Card Number'] ||
+          row['Library Card #'] ||
+          row['ID'] ||
+          row['Id'] ||
+          ''
+        ).trim();
 
-        if (members.some(m => m.email.toLowerCase() === email.toLowerCase())) {
+        if (!name || !cardNumber) {
+          rowsSkipped++;
+          continue;
+        }
+
+        if (members.some(m => m.id === cardNumber)) {
           duplicatesSkipped++;
           continue;
         }
 
         const newMember = {
-          id: generateId('M'),
+          id: cardNumber,
           name,
-          email,
-          phone,
+          email: '',
+          phone: '',
           join_date: new Date().toISOString().split('T')[0],
-          membership_type: type || 'Standard'
+          membership_type: ''
         };
 
         newMembersList.push(newMember);
@@ -1235,7 +1253,10 @@ const LibraryApp = ({ user, onLogout }) => {
 
       let message = `Import Complete!\n\n`;
       message += `✓ New members added: ${newMembersAdded}\n`;
-      message += `⊘ Duplicates skipped: ${duplicatesSkipped}\n`;
+      message += `⊘ Duplicates skipped (same card number): ${duplicatesSkipped}\n`;
+      if (rowsSkipped > 0) {
+        message += `ℹ Rows skipped (missing name or card): ${rowsSkipped}\n`;
+      }
       message += `\nTotal members: ${members.length + newMembersAdded}`;
 
       alert(message);
@@ -1245,6 +1266,52 @@ const LibraryApp = ({ user, onLogout }) => {
     }
 
     event.target.value = '';
+  };
+
+  const exportMembersSpreadsheet = async () => {
+    try {
+      if (!window.XLSX) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      const XLSX = window.XLSX;
+
+      if (!members || members.length === 0) {
+        alert('No members to export.');
+        return;
+      }
+
+      const rows = members.map(member => ({
+        'Name': member.name || '',
+        'Library Card Number': member.id || ''
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Members');
+
+      const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `members_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      alert('Members exported successfully!');
+    } catch (error) {
+      console.error('Members export error:', error);
+      alert('Error exporting members: ' + error.message);
+    }
   };
 
   const BarcodeScannerModal = () => (
@@ -1688,10 +1755,35 @@ const LibraryApp = ({ user, onLogout }) => {
                 <h2 className="text-3xl font-bold text-gray-800">Members Management</h2>
               </div>
               
-              <div className="mb-6">
-                <div className="relative">
+              <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input type="text" value={searchQuery} onChange={handleSearchQueryChange} placeholder="Search members by name, email, or ID..." className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={handleSearchQueryChange}
+                    placeholder="Search members by name or library card number..."
+                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 cursor-pointer text-sm">
+                    <Upload className="w-4 h-4" />
+                    Import Members
+                    <input
+                      type="file"
+                      accept=".xls,.xlsx"
+                      onChange={importMembersSpreadsheet}
+                      className="hidden"
+                    />
+                  </label>
+                  <button
+                    onClick={exportMembersSpreadsheet}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export Members
+                  </button>
                 </div>
               </div>
               
