@@ -1690,14 +1690,17 @@ const LibraryApp = ({ user, onLogout }) => {
                     
                     <select value={newBook.category} onChange={(e) => setNewBook({...newBook, category: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
                       <option value="">Select Category</option>
-                      <option value="Fiction">Fiction</option>
-                      <option value="Non-Fiction">Non-Fiction</option>
-                      <option value="Christian Living">Christian Living</option>
+                      <option value="Bible & Bible Studies">Bible & Bible Studies</option>
+                      <option value="Catechism">Catechism</option>
+                      <option value="General Fiction">General Fiction</option>
+                      <option value="General Non-fiction">General Non-fiction</option>
+                      <option value="Liturgy">Liturgy</option>
+                      <option value="Other Religions">Other Religions</option>
+                      <option value="Saints/Biographies">Saints/Biographies</option>
+                      <option value="Self-Help">Self-Help</option>
+                      <option value="References">References</option>
+                      <option value="Spirituality">Spirituality</option>
                       <option value="Theology">Theology</option>
-                      <option value="Biography">Biography</option>
-                      <option value="Children">Children</option>
-                      <option value="Youth">Youth</option>
-                      <option value="Reference">Reference</option>
                     </select>
                     <input type="number" value={newBook.quantity} onChange={(e) => setNewBook({...newBook, quantity: e.target.value})} placeholder="Quantity" min="1" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
                     <button onClick={handleAddBook} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-semibold">Add Book</button>
