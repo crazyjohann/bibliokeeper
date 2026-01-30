@@ -328,7 +328,7 @@ const LibraryApp = ({ user, onLogout }) => {
       }
     } catch (error) {
       console.error('Error loading data:', error);
-      setDataError('Failed to load library data. Please refresh the page.');
+      setDataError(null);
     } finally {
       setLoading(false);
     }
@@ -905,11 +905,7 @@ const LibraryApp = ({ user, onLogout }) => {
     
     const member = {
       id: newMember.cardNumber.trim(),
-      name: newMember.name.trim(),
-      email: '',
-      phone: '',
-      join_date: new Date().toISOString().split('T')[0],
-      membership_type: ''
+      name: newMember.name.trim()
     };
     
     try {
@@ -1095,11 +1091,13 @@ const LibraryApp = ({ user, onLogout }) => {
           const titleRaw = row['TITLE'] || row['Title'] || row['title'] || row['BOOK TITLE'] || '';
           const authorRaw = row['AUTHOR'] || row['Author'] || row['author'] || row['AUTHORS'] || row['Primary Author'] || '';
           const categoryRaw = row['COLLECTIONS'] || row['Collections'] || row['Category'] || row['CATEGORY'] || 'General';
+          const languageRaw = row['LANGUAGE'] || row['Language'] || '';
           
           const isbn = String(isbnRaw).trim().replace(/[^0-9X]/gi, '');
           const title = String(titleRaw).trim();
           const author = String(authorRaw).trim();
           const category = String(categoryRaw).trim() || 'General';
+          const language = String(languageRaw).trim() || 'English';
           
           if (!title) {
             continue;
@@ -1127,6 +1125,7 @@ const LibraryApp = ({ user, onLogout }) => {
             author: finalAuthor,
             isbn: finalISBN,
             category,
+            language,
             available: 1,
             total: 1
           };
@@ -1232,11 +1231,7 @@ const LibraryApp = ({ user, onLogout }) => {
 
         const newMember = {
           id: cardNumber,
-          name,
-          email: '',
-          phone: '',
-          join_date: new Date().toISOString().split('T')[0],
-          membership_type: ''
+          name
         };
 
         newMembersList.push(newMember);
@@ -1838,9 +1833,7 @@ const LibraryApp = ({ user, onLogout }) => {
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
                                 <div className="font-medium text-lg">{member.name}</div>
-                                <div className="text-gray-600">{member.email}</div>
-                                {member.phone && <div className="text-sm text-gray-500">{member.phone}</div>}
-                                <div className="text-sm text-gray-500 mt-1">ID: {member.id} | Joined: {member.join_date}</div>
+                                <div className="text-sm text-gray-500 mt-1">ID: {member.id}</div>
                                 <div className="text-sm mt-1">
                                   <span className="text-blue-600">Active Loans: {memberLoans.length}/{settings.maxLoansPerMember}</span>
                                   {memberOverdue.length > 0 && <span className="ml-3 text-red-600">Overdue: {memberOverdue.length}</span>}
