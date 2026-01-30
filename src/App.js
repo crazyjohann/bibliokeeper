@@ -254,7 +254,7 @@ const LibraryApp = ({ user, onLogout }) => {
   const [notifications, setNotifications] = useState([]);
   const [scanInput, setScanInput] = useState('');
   const [memberScanInput, setMemberScanInput] = useState('');
-  const [newBook, setNewBook] = useState({ title: '', author: '', isbn: '', category: '', quantity: 1 });
+  const [newBook, setNewBook] = useState({ title: '', author: '', isbn: '', category: '', language: 'English', quantity: 1 });
   const [newMember, setNewMember] = useState({ name: '', cardNumber: '' });
   const [searchQuery, setSearchQuery] = useState('');
   const [isScanning, setIsScanning] = useState(false);
@@ -846,6 +846,7 @@ const LibraryApp = ({ user, onLogout }) => {
       author: newBook.author.trim(),
       isbn: newBook.isbn.trim(),
       category: newBook.category.trim() || 'General',
+      language: newBook.language || 'English',
       available: quantity,
       total: quantity
     };
@@ -858,7 +859,7 @@ const LibraryApp = ({ user, onLogout }) => {
       if (error) throw error;
       
       setBooks([...books, book]);
-      setNewBook({ title: '', author: '', isbn: '', category: '', quantity: 1 });
+      setNewBook({ title: '', author: '', isbn: '', category: '', language: 'English', quantity: 1 });
       alert(`Book "${book.title}" added successfully with ID: ${book.id}`);
     } catch (error) {
       console.error('Error adding book:', error);
@@ -1657,7 +1658,7 @@ const LibraryApp = ({ user, onLogout }) => {
                   <div className="space-y-4">
                     <input type="text" value={newBook.title} onChange={(e) => setNewBook({...newBook, title: e.target.value})} placeholder="Book Title *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
                     <input type="text" value={newBook.author} onChange={(e) => setNewBook({...newBook, author: e.target.value})} placeholder="Author *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                    
+
                     <div>
                       <div className="flex">
                         <input 
@@ -1690,17 +1691,22 @@ const LibraryApp = ({ user, onLogout }) => {
                     
                     <select value={newBook.category} onChange={(e) => setNewBook({...newBook, category: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
                       <option value="">Select Category</option>
-                      <option value="Bible & Bible Studies">Bible & Bible Studies</option>
-                      <option value="Catechism">Catechism</option>
-                      <option value="General Fiction">General Fiction</option>
-                      <option value="General Non-fiction">General Non-fiction</option>
-                      <option value="Liturgy">Liturgy</option>
-                      <option value="Other Religions">Other Religions</option>
-                      <option value="Saints/Biographies">Saints/Biographies</option>
-                      <option value="Self-Help">Self-Help</option>
-                      <option value="References">References</option>
-                      <option value="Spirituality">Spirituality</option>
+                      <option value="Fiction">Fiction</option>
+                      <option value="Non-Fiction">Non-Fiction</option>
+                      <option value="Christian Living">Christian Living</option>
                       <option value="Theology">Theology</option>
+                      <option value="Biography">Biography</option>
+                      <option value="Children">Children</option>
+                      <option value="Youth">Youth</option>
+                      <option value="Reference">Reference</option>
+                    </select>
+                    <select
+                      value={newBook.language}
+                      onChange={(e) => setNewBook({ ...newBook, language: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    >
+                      <option value="English">English</option>
+                      <option value="Malayalam">Malayalam</option>
                     </select>
                     <input type="number" value={newBook.quantity} onChange={(e) => setNewBook({...newBook, quantity: e.target.value})} placeholder="Quantity" min="1" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
                     <button onClick={handleAddBook} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-semibold">Add Book</button>
