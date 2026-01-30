@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell, AlertCircle, LogIn } from 'lucide-react';
 
 // Initialize Supabase client
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || "https://zhyigfuzgdvdixvhuvgf.supabase.co";
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpoeWlnZnV6Z2R2ZGl4dmh1dmdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk3OTQ0NjMsImV4cCI6MjA3NTM3MDQ2M30.Lrq-akIdI5x2a4Bci9-K4x-OO8EJooMENZtCnLwG3-0";
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || "https://ihntwnmbnfjdcudxqtvi.supabase.co";
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlobnR3bm1ibmZqZGN1ZHhxdHZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4MTA0MzIsImV4cCI6MjA4NTM4NjQzMn0.KkhC0oNcuBOxqOdpd1Qrk6oTwp9E63tCtr3Ds87T0I4";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const VerificationScreen = ({ onVerified }) => {
