@@ -17,7 +17,8 @@ const withTimeout = (promise, timeoutMs, message) => {
 
 const VerificationScreen = ({ onVerified }) => {
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('')('libraryVerified', 'true');
+  const [error, setError] = useState('');
+  const [verified, setVerified] = useState(() => sessionStorage.getItem('libraryVerified') === 'true');
 
   const handleSubmit = (e) => {
     e.preventDefault();
