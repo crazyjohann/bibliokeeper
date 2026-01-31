@@ -912,6 +912,42 @@ const LibraryApp = ({ user, onLogout }) => {
     }
   };
 
+  const handleDeleteAllBooks = async () => {
+    const hasLoans = loans.length > 0;
+    const confirmMessage = hasLoans
+      ? 'This will delete all books and all loans. Continue?'
+      : 'This will delete all books. Continue?';
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      if (hasLoans) {
+        const { error: loansError } = await supabase
+          .from('loans')
+          .delete()
+          .neq('id', '');
+
+        if (loansError) throw loansError;
+        setLoans([]);
+      }
+
+      const { error: booksError } = await supabase
+        .from('books')
+        .delete()
+        .neq('id', '');
+
+      if (booksError) throw booksError;
+
+      setBooks([]);
+      alert('All books deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting all books:', error);
+      alert('Failed to delete all books. Please try again.');
+    }
+  };
+
   const handleAddMember = async () => {
     if (!newMember.name || !newMember.cardNumber) {
       alert('Please fill in required fields (Name and Library Card Number)!');
@@ -1641,11 +1677,15 @@ const LibraryApp = ({ user, onLogout }) => {
                   <label className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 cursor-pointer">
                     <Upload className="w-4 h-4" />
                     Import Spreadsheet
-                    <input type="file" accept=".xls,.xlsx" onChange={importSpreadsheet} className="hidden" />
+                    <input type="file" accept=".xls,.xlsx,.csv" onChange={importSpreadsheet} className="hidden" />
                   </label>
                   <button onClick={exportData} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
                     <Download className="w-4 h-4" />
                     Export
+                  </button>
+                  <button onClick={handleDeleteAllBooks} className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+                    <Trash2 className="w-4 h-4" />
+                    Delete All
                   </button>
                 </div>
               </div>
