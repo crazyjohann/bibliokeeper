@@ -7,10 +7,17 @@ const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || "https://ihntwnmbnfjdc
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlobnR3bm1ibmZqZGN1ZHhxdHZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4MTA0MzIsImV4cCI6MjA4NTM4NjQzMn0.KkhC0oNcuBOxqOdpd1Qrk6oTwp9E63tCtr3Ds87T0I4";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+const withTimeout = (promise, timeoutMs, message) => {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+};
+
 const VerificationScreen = ({ onVerified }) => {
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [verified, setVerified] = useState(() => sessionStorage.getItem('libraryVerified') === 'true');
+  const [error, setError] = useState('')('libraryVerified', 'true');
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -289,39 +296,51 @@ const LibraryApp = ({ user, onLogout }) => {
     setLoading(true);
     setDataError(null);
     try {
-      // Load books
-      const { data: booksData, error: booksError } = await supabase
-        .from('books')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data: booksData, error: booksError } = await withTimeout(
+        supabase
+          .from('books')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        15000,
+        'Books request timed out'
+      );
       
       if (booksError) throw booksError;
       setBooks(booksData || []);
 
-      // Load members
-      const { data: membersData, error: membersError } = await supabase
-        .from('members')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data: membersData, error: membersError } = await withTimeout(
+        supabase
+          .from('members')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        15000,
+        'Members request timed out'
+      );
       
       if (membersError) throw membersError;
       setMembers(membersData || []);
 
-      // Load loans
-      const { data: loansData, error: loansError } = await supabase
-        .from('loans')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data: loansData, error: loansError } = await withTimeout(
+        supabase
+          .from('loans')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        15000,
+        'Loans request timed out'
+      );
       
       if (loansError) throw loansError;
       setLoans(loansData || []);
 
-      // Load settings
-      const { data: settingsData, error: settingsError } = await supabase
-        .from('settings')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
+      const { data: settingsData, error: settingsError } = await withTimeout(
+        supabase
+          .from('settings')
+          .select('*')
+          .eq('user_id', user.id)
+          .single(),
+        15000,
+        'Settings request timed out'
+      );
       
       if (!settingsError && settingsData) {
         setSettings(settingsData.settings);
@@ -2060,7 +2079,11 @@ const Root = () => {
 
   const checkUser = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await withTimeout(
+        supabase.auth.getSession(),
+        8000,
+        'Session request timed out'
+      );
       setUser(session?.user || null);
     } catch (error) {
       console.error('Error checking user session:', error);
