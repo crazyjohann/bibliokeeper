@@ -1004,6 +1004,42 @@ const LibraryApp = ({ user, onLogout }) => {
     }
   };
 
+  const handleDeleteAllMembers = async () => {
+    const hasLoans = loans.length > 0;
+    const confirmMessage = hasLoans
+      ? 'This will delete all members and all loans. Continue?'
+      : 'This will delete all members. Continue?';
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      if (hasLoans) {
+        const { error: loansError } = await supabase
+          .from('loans')
+          .delete()
+          .neq('id', '');
+
+        if (loansError) throw loansError;
+        setLoans([]);
+      }
+
+      const { error: membersError } = await supabase
+        .from('members')
+        .delete()
+        .neq('id', '');
+
+      if (membersError) throw membersError;
+
+      setMembers([]);
+      alert('All members deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting all members:', error);
+      alert('Failed to delete all members. Please try again.');
+    }
+  };
+
   const getMemberLoans = (memberId) => {
     return loans
       .filter(loan => loan.member_id === memberId && loan.status === 'active')
@@ -1835,7 +1871,7 @@ const LibraryApp = ({ user, onLogout }) => {
                     Import Members
                     <input
                       type="file"
-                      accept=".xls,.xlsx"
+                      accept=".xls,.xlsx,.csv"
                       onChange={importMembersSpreadsheet}
                       className="hidden"
                     />
@@ -1846,6 +1882,13 @@ const LibraryApp = ({ user, onLogout }) => {
                   >
                     <Download className="w-4 h-4" />
                     Export Members
+                  </button>
+                  <button
+                    onClick={handleDeleteAllMembers}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete All
                   </button>
                 </div>
               </div>
