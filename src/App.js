@@ -312,8 +312,7 @@ const LibraryApp = ({ user, onLogout }) => {
       const { data: membersData, error: membersError } = await withTimeout(
         supabase
           .from('members')
-          .select('*')
-          .order('created_at', { ascending: false }),
+          .select('*'),
         15000,
         'Members request timed out'
       );
