@@ -1516,7 +1516,7 @@ const LibraryApp = ({ user, onLogout }) => {
           
           <button
             type="button"
-            onClick={() => setSelectedLoanView('active')}
+            onClick={() => setSelectedLoanView(prev => prev === 'active' ? '' : 'active')}
             className={`bg-white rounded-xl p-6 shadow-lg text-left transition-shadow cursor-pointer ${selectedLoanView === 'active' ? 'ring-2 ring-green-400' : ''}`}
           >
             <div className="flex items-center justify-between">
@@ -1540,7 +1540,7 @@ const LibraryApp = ({ user, onLogout }) => {
           
           <button
             type="button"
-            onClick={() => setSelectedLoanView('overdue')}
+            onClick={() => setSelectedLoanView(prev => prev === 'overdue' ? '' : 'overdue')}
             className={`bg-white rounded-xl p-6 shadow-lg text-left transition-shadow cursor-pointer ${selectedLoanView === 'overdue' ? 'ring-2 ring-red-400' : ''}`}
           >
             <div className="flex items-center justify-between">
@@ -1558,14 +1558,14 @@ const LibraryApp = ({ user, onLogout }) => {
             <div className="flex gap-3 mb-4">
               <button
                 type="button"
-                onClick={() => setSelectedLoanView('active')}
+                onClick={() => setSelectedLoanView(prev => prev === 'active' ? '' : 'active')}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold border ${selectedLoanView === 'active' ? 'bg-green-500 text-white border-green-500' : 'bg-white text-gray-700 border-gray-300'}`}
               >
                 Active Loans
               </button>
               <button
                 type="button"
-                onClick={() => setSelectedLoanView('overdue')}
+                onClick={() => setSelectedLoanView(prev => prev === 'overdue' ? '' : 'overdue')}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold border ${selectedLoanView === 'overdue' ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-700 border-gray-300'}`}
               >
                 Overdue
