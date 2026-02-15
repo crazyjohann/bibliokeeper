@@ -273,6 +273,7 @@ const LibraryApp = ({ user, onLogout }) => {
   const [lastScannedBarcode, setLastScannedBarcode] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState(null);
+  const [selectedLoanView, setSelectedLoanView] = useState('');
   
   const scanTimeoutRef = useRef(null);
   const isScanningRef = useRef(false);
@@ -1050,6 +1051,24 @@ const LibraryApp = ({ user, onLogout }) => {
       .filter(loan => loan.book);
   };
 
+  const getActiveLoansList = () => {
+    return loans
+      .filter(loan => loan.status === 'active')
+      .map(loan => ({
+        ...loan,
+        book: findBook(loan.book_id),
+        member: findMember(loan.member_id)
+      }));
+  };
+
+  const getOverdueLoansList = () => {
+    return overdueItems.map(loan => ({
+      ...loan,
+      book: findBook(loan.book_id),
+      member: findMember(loan.member_id)
+    }));
+  };
+
   const getFilteredBooks = () => {
     if (!searchQuery) return books;
     const query = searchQuery.toLowerCase();
@@ -1484,7 +1503,7 @@ const LibraryApp = ({ user, onLogout }) => {
           </div>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-xl p-6 shadow-lg">
             <div className="flex items-center justify-between">
               <div>
@@ -1495,7 +1514,11 @@ const LibraryApp = ({ user, onLogout }) => {
             </div>
           </div>
           
-          <div className="bg-white rounded-xl p-6 shadow-lg">
+          <button
+            type="button"
+            onClick={() => setSelectedLoanView('active')}
+            className={`bg-white rounded-xl p-6 shadow-lg text-left transition-shadow cursor-pointer ${selectedLoanView === 'active' ? 'ring-2 ring-green-400' : ''}`}
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-600 text-sm">Active Loans</p>
@@ -1503,7 +1526,7 @@ const LibraryApp = ({ user, onLogout }) => {
               </div>
               <BookOpen className="w-8 h-8 text-green-500" />
             </div>
-          </div>
+          </button>
           
           <div className="bg-white rounded-xl p-6 shadow-lg">
             <div className="flex items-center justify-between">
@@ -1515,7 +1538,11 @@ const LibraryApp = ({ user, onLogout }) => {
             </div>
           </div>
           
-          <div className="bg-white rounded-xl p-6 shadow-lg">
+          <button
+            type="button"
+            onClick={() => setSelectedLoanView('overdue')}
+            className={`bg-white rounded-xl p-6 shadow-lg text-left transition-shadow cursor-pointer ${selectedLoanView === 'overdue' ? 'ring-2 ring-red-400' : ''}`}
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-600 text-sm">Overdue</p>
@@ -1523,9 +1550,70 @@ const LibraryApp = ({ user, onLogout }) => {
               </div>
               <Calendar className="w-8 h-8 text-red-500" />
             </div>
-          </div>
+          </button>
         </div>
-        
+
+        {selectedLoanView && (
+          <div className="mb-8">
+            <div className="flex gap-3 mb-4">
+              <button
+                type="button"
+                onClick={() => setSelectedLoanView('active')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold border ${selectedLoanView === 'active' ? 'bg-green-500 text-white border-green-500' : 'bg-white text-gray-700 border-gray-300'}`}
+              >
+                Active Loans
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedLoanView('overdue')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold border ${selectedLoanView === 'overdue' ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-700 border-gray-300'}`}
+              >
+                Overdue
+              </button>
+            </div>
+            <div className={`rounded-xl shadow-lg p-4 bg-white max-h-80 overflow-y-auto border ${selectedLoanView === 'overdue' ? 'border-red-200' : 'border-green-200'}`}>
+              {selectedLoanView === 'active' && (() => {
+                const activeLoans = getActiveLoansList();
+                if (!activeLoans.length) {
+                  return <p className="text-gray-500 text-center py-6">No active loans</p>;
+                }
+                return activeLoans.map(loan => (
+                  <div key={loan.id} className="flex justify-between items-start py-3 border-b border-gray-100 last:border-b-0">
+                    <div>
+                      <div className="font-medium text-gray-800">{loan.book?.title || 'Unknown Book'}</div>
+                      <div className="text-xs text-gray-500 mt-1">Book ID: {loan.book_id}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-medium text-gray-800">{loan.member?.name || 'Unknown Member'}</div>
+                      <div className="text-xs text-gray-500">Member ID: {loan.member_id}</div>
+                      <div className="text-xs text-gray-400 mt-1">Due: {loan.due_date}</div>
+                    </div>
+                  </div>
+                ));
+              })()}
+              {selectedLoanView === 'overdue' && (() => {
+                const overdueLoans = getOverdueLoansList();
+                if (!overdueLoans.length) {
+                  return <p className="text-gray-500 text-center py-6">No overdue items</p>;
+                }
+                return overdueLoans.map(loan => (
+                  <div key={loan.id} className="flex justify-between items-start py-3 border-b border-red-100 last:border-b-0 bg-red-50 rounded-lg px-3">
+                    <div>
+                      <div className="font-medium text-gray-800">{loan.book?.title || 'Unknown Book'}</div>
+                      <div className="text-xs text-gray-500 mt-1">Book ID: {loan.book_id}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-medium text-gray-800">{loan.member?.name || 'Unknown Member'}</div>
+                      <div className="text-xs text-gray-500">Member ID: {loan.member_id}</div>
+                      <div className="text-xs text-red-600 mt-1">Due: {loan.due_date}</div>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <button onClick={() => setCurrentScreen('loan')} className="bg-green-500 hover:bg-green-600 text-white p-8 rounded-xl shadow-lg transform hover:scale-105 transition-all duration-200">
             <BookOpen className="w-16 h-16 mx-auto mb-4" />
