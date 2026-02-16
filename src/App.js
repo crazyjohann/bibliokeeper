@@ -6,8 +6,8 @@ const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || "https://ihntwnmbnfjdc
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlobnR3bm1ibmZqZGN1ZHhxdHZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4MTA0MzIsImV4cCI6MjA4NTM4NjQzMn0.KkhC0oNcuBOxqOdpd1Qrk6oTwp9E63tCtr3Ds87T0I4";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-const ADMIN_ACCESS_CODE = 'infantjesus1231!';
-const TEACHER_ACCESS_CODE = 'infantjesus1232!';
+const ADMIN_ACCESS_CODE = 'ijslibraryadmin1!';
+const TEACHER_ACCESS_CODE = 'ijsclassadmin1!';
 
 const withTimeout = (promise, timeoutMs, message) => {
   let timeoutId;
@@ -20,7 +20,7 @@ const withTimeout = (promise, timeoutMs, message) => {
 const VerificationScreen = ({ onVerified }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [verified, setVerified] = useState(() => sessionStorage.getItem('libraryVerified') === 'true');
+  const [verified, setVerified] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -39,8 +39,6 @@ const VerificationScreen = ({ onVerified }) => {
 
     setError('');
     setVerified(true);
-    sessionStorage.setItem('libraryVerified', 'true');
-    sessionStorage.setItem('libraryRole', role);
     setPassword('');
     setTimeout(() => {
       if (typeof onVerified === 'function') {
@@ -2281,8 +2279,8 @@ const LibraryApp = ({ user, onLogout, role }) => {
 };
 
 const Root = () => {
-  const [verified, setVerified] = useState(() => sessionStorage.getItem('libraryVerified') === 'true');
-  const [role, setRole] = useState(() => sessionStorage.getItem('libraryRole') || 'admin');
+  const [verified, setVerified] = useState(false);
+  const [role, setRole] = useState('admin');
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(verified);
 
