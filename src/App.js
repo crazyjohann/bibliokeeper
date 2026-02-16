@@ -897,7 +897,7 @@ const LibraryApp = ({ user, onLogout, role }) => {
       
       setBooks([...books, book]);
       setNewBook({ title: '', author: '', isbn: '', category: '', language: 'English', quantity: 1 });
-      alert(`Book "${book.title}" added successfully with ID: ${book.id}`);
+      alert(`Book "${book.title}" added successfully.`);
     } catch (error) {
       console.error('Error adding book:', error);
       alert('Failed to add book. Please try again.');
@@ -1620,11 +1620,9 @@ const LibraryApp = ({ user, onLogout, role }) => {
                   <div key={loan.id} className="flex justify-between items-start py-3 border-b border-gray-100 last:border-b-0">
                     <div>
                       <div className="font-medium text-gray-800">{loan.book?.title || 'Unknown Book'}</div>
-                      <div className="text-xs text-gray-500 mt-1">Book ID: {loan.book_id}</div>
                     </div>
                     <div className="text-right">
                       <div className="font-medium text-gray-800">{loan.member?.name || 'Unknown Member'}</div>
-                      <div className="text-xs text-gray-500">Member ID: {loan.member_id}</div>
                       <div className="text-xs text-gray-400 mt-1">Due: {loan.due_date}</div>
                     </div>
                   </div>
@@ -1639,11 +1637,9 @@ const LibraryApp = ({ user, onLogout, role }) => {
                   <div key={loan.id} className="flex justify-between items-start py-3 border-b border-red-100 last:border-b-0 bg-red-50 rounded-lg px-3">
                     <div>
                       <div className="font-medium text-gray-800">{loan.book?.title || 'Unknown Book'}</div>
-                      <div className="text-xs text-gray-500 mt-1">Book ID: {loan.book_id}</div>
                     </div>
                     <div className="text-right">
                       <div className="font-medium text-gray-800">{loan.member?.name || 'Unknown Member'}</div>
-                      <div className="text-xs text-gray-500">Member ID: {loan.member_id}</div>
                       <div className="text-xs text-red-600 mt-1">Due: {loan.due_date}</div>
                     </div>
                   </div>
@@ -1705,9 +1701,9 @@ const LibraryApp = ({ user, onLogout, role }) => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Book ID / ISBN</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">ISBN</label>
                     <div className="flex">
-                      <input type="text" value={scanInput} onChange={handleScanInputChange} placeholder="Enter book ID or ISBN" className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
+                      <input type="text" value={scanInput} onChange={handleScanInputChange} placeholder="Enter ISBN" className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
                       <button onClick={() => startBarcodeScanning('book')} className="px-4 py-3 bg-green-500 text-white border border-green-500 rounded-r-lg hover:bg-green-600">
                         <Camera className="w-5 h-5" />
                       </button>
@@ -1782,9 +1778,9 @@ const LibraryApp = ({ user, onLogout, role }) => {
               
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Book ID / ISBN</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">ISBN</label>
                   <div className="flex">
-                    <input type="text" value={scanInput} onChange={handleScanInputChange} placeholder="Enter book ID or ISBN" className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input type="text" value={scanInput} onChange={handleScanInputChange} placeholder="Enter ISBN" className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     <button onClick={() => startBarcodeScanning('book')} className="px-4 py-3 bg-blue-500 text-white border border-blue-500 rounded-r-lg hover:bg-blue-600">
                       <Camera className="w-5 h-5" />
                     </button>
@@ -1866,7 +1862,7 @@ const LibraryApp = ({ user, onLogout, role }) => {
               <div className="mb-6">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input type="text" value={searchQuery} onChange={handleSearchQueryChange} placeholder="Search books by title, author, ISBN, category, or ID..." className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  <input type="text" value={searchQuery} onChange={handleSearchQueryChange} placeholder="Search books by title, author, ISBN, or category..." className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
                 </div>
               </div>
               
@@ -1955,7 +1951,7 @@ const LibraryApp = ({ user, onLogout, role }) => {
                                 <div className="font-medium text-lg">{book.title}</div>
                                 <div className="text-gray-600">by {book.author}</div>
                                 <div className="text-sm text-gray-500 mt-1">ISBN: {book.isbn} | Category: {book.category}</div>
-                                <div className="text-sm text-gray-500">ID: {book.id} | Available: {book.available}/{book.total}
+                                <div className="text-sm text-gray-500">Available: {book.available}/{book.total}
                                   {activeLoans > 0 && <span className="ml-2 text-blue-600">({activeLoans} on loan)</span>}
                                 </div>
                               </div>
@@ -2076,7 +2072,7 @@ const LibraryApp = ({ user, onLogout, role }) => {
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
                                 <div className="font-medium text-lg">{member.name}</div>
-                                <div className="text-sm text-gray-500 mt-1">ID: {member.id}</div>
+                                <div className="text-sm text-gray-500 mt-1">Card Number: {member.id}</div>
                                 <div className="text-sm mt-1">
                                   <span className="text-blue-600">Active Loans: {memberLoans.length}/{settings.maxLoansPerMember}</span>
                                   {memberOverdue.length > 0 && <span className="ml-3 text-red-600">Overdue: {memberOverdue.length}</span>}
