@@ -1,11 +1,13 @@
-  import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { createClient } from '@supabase/supabase-js';
 import { Book, Users, ArrowLeft, Plus, Trash2, BookOpen, UserCheck, Camera, Search, Calendar, FileText, Download, Upload, Settings, Bell, AlertCircle, LogIn } from 'lucide-react';
 
-// Initialize Supabase client
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || "https://ihntwnmbnfjdcudxqtvi.supabase.co";
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlobnR3bm1ibmZqZGN1ZHhxdHZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4MTA0MzIsImV4cCI6MjA4NTM4NjQzMn0.KkhC0oNcuBOxqOdpd1Qrk6oTwp9E63tCtr3Ds87T0I4";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+const ADMIN_ACCESS_CODE = 'infantjesus1231!';
+const TEACHER_ACCESS_CODE = 'infantjesus1232!';
 
 const withTimeout = (promise, timeoutMs, message) => {
   let timeoutId;
@@ -22,20 +24,29 @@ const VerificationScreen = ({ onVerified }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (password === 'infantjesus1231!') {
-      setError('');
-      setVerified(true);
-      sessionStorage.setItem('libraryVerified', 'true');
-      setPassword('');
-      setTimeout(() => {
-        if (typeof onVerified === 'function') {
-          onVerified();
-        }
-      }, 800);
-    } else {
+    let role = null;
+    if (password === ADMIN_ACCESS_CODE) {
+      role = 'admin';
+    } else if (password === TEACHER_ACCESS_CODE) {
+      role = 'teacher';
+    }
+
+    if (!role) {
       setError('Incorrect password. Please try again.');
       setPassword('');
+      return;
     }
+
+    setError('');
+    setVerified(true);
+    sessionStorage.setItem('libraryVerified', 'true');
+    sessionStorage.setItem('libraryRole', role);
+    setPassword('');
+    setTimeout(() => {
+      if (typeof onVerified === 'function') {
+        onVerified(role);
+      }
+    }, 800);
   };
 
   if (verified) {
@@ -252,7 +263,7 @@ const LoginScreen = ({ onLogin }) => {
   );
 };
 
-const LibraryApp = ({ user, onLogout }) => {
+const LibraryApp = ({ user, onLogout, role }) => {
   const [currentScreen, setCurrentScreen] = useState('main');
   const [books, setBooks] = useState([]);
   const [members, setMembers] = useState([]);
@@ -274,6 +285,7 @@ const LibraryApp = ({ user, onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState(null);
   const [selectedLoanView, setSelectedLoanView] = useState('');
+  const isAdmin = role !== 'teacher';
   
   const scanTimeoutRef = useRef(null);
   const isScanningRef = useRef(false);
@@ -587,7 +599,7 @@ const LibraryApp = ({ user, onLogout }) => {
     if (scanningFor === 'book') {
       setScanInput(cleanBarcode);
       const existingBook = findBook(cleanBarcode);
-      if (!existingBook && cleanBarcode.length >= 10) {
+      if (isAdmin && !existingBook && cleanBarcode.length >= 10) {
         try {
           const bookInfo = await fetchBookInfoFromAPI(cleanBarcode);
           if (bookInfo) {
@@ -620,6 +632,11 @@ const LibraryApp = ({ user, onLogout }) => {
     } else if (scanningFor === 'member') {
       setMemberScanInput(cleanBarcode);
     } else if (scanningFor === 'isbn') {
+      if (!isAdmin) {
+        alert('Only admins can add books.');
+        stopBarcodeScanning();
+        return;
+      }
       setNewBook(prev => ({ ...prev, isbn: cleanBarcode }));
       stopBarcodeScanning();
       try {
@@ -888,6 +905,10 @@ const LibraryApp = ({ user, onLogout }) => {
   };
 
   const handleDeleteBook = async (bookId) => {
+    if (!isAdmin) {
+      alert('Only admins can delete books.');
+      return;
+    }
     const activeLoans = loans.filter(loan => loan.book_id === bookId && loan.status === 'active');
     if (activeLoans.length > 0) {
       alert('Cannot delete book with active loans!');
@@ -913,6 +934,10 @@ const LibraryApp = ({ user, onLogout }) => {
   };
 
   const handleDeleteAllBooks = async () => {
+    if (!isAdmin) {
+      alert('Only admins can delete books.');
+      return;
+    }
     const hasLoans = loans.length > 0;
     const confirmMessage = hasLoans
       ? 'This will delete all books and all loans. Continue?'
@@ -949,6 +974,10 @@ const LibraryApp = ({ user, onLogout }) => {
   };
 
   const handleAddMember = async () => {
+    if (!isAdmin) {
+      alert('Only admins can add members.');
+      return;
+    }
     if (!newMember.name || !newMember.cardNumber) {
       alert('Please fill in required fields (Name and Library Card Number)!');
       return;
@@ -981,6 +1010,10 @@ const LibraryApp = ({ user, onLogout }) => {
   };
 
   const handleDeleteMember = async (memberId) => {
+    if (!isAdmin) {
+      alert('Only admins can delete members.');
+      return;
+    }
     const activeLoans = loans.filter(loan => loan.member_id === memberId && loan.status === 'active');
     if (activeLoans.length > 0) {
       alert('Cannot delete member with active loans!');
@@ -1006,6 +1039,10 @@ const LibraryApp = ({ user, onLogout }) => {
   };
 
   const handleDeleteAllMembers = async () => {
+    if (!isAdmin) {
+      alert('Only admins can delete members.');
+      return;
+    }
     const hasLoans = loans.length > 0;
     const confirmMessage = hasLoans
       ? 'This will delete all members and all loans. Continue?'
@@ -1494,9 +1531,11 @@ const LibraryApp = ({ user, onLogout }) => {
             <button onClick={() => setCurrentScreen('reports')} className="p-3 bg-white rounded-lg shadow-lg hover:shadow-xl transition-all">
               <FileText className="w-6 h-6 text-gray-600" />
             </button>
-            <button onClick={() => setCurrentScreen('settings')} className="p-3 bg-white rounded-lg shadow-lg hover:shadow-xl transition-all">
-              <Settings className="w-6 h-6 text-gray-600" />
-            </button>
+            {isAdmin && (
+              <button onClick={() => setCurrentScreen('settings')} className="p-3 bg-white rounded-lg shadow-lg hover:shadow-xl transition-all">
+                <Settings className="w-6 h-6 text-gray-600" />
+              </button>
+            )}
             <button onClick={onLogout} className="p-3 bg-red-500 text-white rounded-lg shadow-lg hover:shadow-xl hover:bg-red-600 transition-all">
               Logout
             </button>
@@ -1797,19 +1836,23 @@ const LibraryApp = ({ user, onLogout }) => {
                 </div>
                 
                 <div className="flex gap-3">
-                  <label className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 cursor-pointer">
-                    <Upload className="w-4 h-4" />
-                    Import Spreadsheet
-                    <input type="file" accept=".xls,.xlsx,.csv" onChange={importSpreadsheet} className="hidden" />
-                  </label>
+                  {isAdmin && (
+                    <label className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 cursor-pointer">
+                      <Upload className="w-4 h-4" />
+                      Import Spreadsheet
+                      <input type="file" accept=".xls,.xlsx,.csv" onChange={importSpreadsheet} className="hidden" />
+                    </label>
+                  )}
                   <button onClick={exportData} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
                     <Download className="w-4 h-4" />
                     Export
                   </button>
-                  <button onClick={handleDeleteAllBooks} className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
-                    <Trash2 className="w-4 h-4" />
-                    Delete All
-                  </button>
+                  {isAdmin && (
+                    <button onClick={handleDeleteAllBooks} className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+                      <Trash2 className="w-4 h-4" />
+                      Delete All
+                    </button>
+                  )}
                 </div>
               </div>
               
@@ -1828,14 +1871,15 @@ const LibraryApp = ({ user, onLogout }) => {
               </div>
               
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-1">
-                  <h3 className="text-xl font-semibold mb-4 flex items-center">
-                    <Plus className="w-5 h-5 mr-2" />
-                    Add New Book
-                  </h3>
-                  <div className="space-y-4">
-                    <input type="text" value={newBook.title} onChange={(e) => setNewBook({...newBook, title: e.target.value})} placeholder="Book Title *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                    <input type="text" value={newBook.author} onChange={(e) => setNewBook({...newBook, author: e.target.value})} placeholder="Author *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                {isAdmin && (
+                  <div className="lg:col-span-1">
+                    <h3 className="text-xl font-semibold mb-4 flex items-center">
+                      <Plus className="w-5 h-5 mr-2" />
+                      Add New Book
+                    </h3>
+                    <div className="space-y-4">
+                      <input type="text" value={newBook.title} onChange={(e) => setNewBook({...newBook, title: e.target.value})} placeholder="Book Title *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                      <input type="text" value={newBook.author} onChange={(e) => setNewBook({...newBook, author: e.target.value})} placeholder="Author *" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
 
                     <div>
                       <div className="flex">
@@ -1888,8 +1932,9 @@ const LibraryApp = ({ user, onLogout }) => {
                     </select>
                     <input type="number" value={newBook.quantity} onChange={(e) => setNewBook({...newBook, quantity: e.target.value})} placeholder="Quantity" min="1" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
                     <button onClick={handleAddBook} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-semibold">Add Book</button>
+                    </div>
                   </div>
-                </div>
+                )}
                 
                 <div className="lg:col-span-2">
                   <div className="flex items-center justify-between mb-4">
@@ -1914,9 +1959,11 @@ const LibraryApp = ({ user, onLogout }) => {
                                   {activeLoans > 0 && <span className="ml-2 text-blue-600">({activeLoans} on loan)</span>}
                                 </div>
                               </div>
-                              <button onClick={() => handleDeleteBook(book.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg ml-4" title="Delete book">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {isAdmin && (
+                                <button onClick={() => handleDeleteBook(book.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg ml-4" title="Delete book">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -1954,16 +2001,18 @@ const LibraryApp = ({ user, onLogout }) => {
                   />
                 </div>
                 <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 cursor-pointer text-sm">
-                    <Upload className="w-4 h-4" />
-                    Import Members
-                    <input
-                      type="file"
-                      accept=".xls,.xlsx,.csv"
-                      onChange={importMembersSpreadsheet}
-                      className="hidden"
-                    />
-                  </label>
+                  {isAdmin && (
+                    <label className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 cursor-pointer text-sm">
+                      <Upload className="w-4 h-4" />
+                      Import Members
+                      <input
+                        type="file"
+                        accept=".xls,.xlsx,.csv"
+                        onChange={importMembersSpreadsheet}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
                   <button
                     onClick={exportMembersSpreadsheet}
                     className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm"
@@ -1971,40 +2020,44 @@ const LibraryApp = ({ user, onLogout }) => {
                     <Download className="w-4 h-4" />
                     Export Members
                   </button>
-                  <button
-                    onClick={handleDeleteAllMembers}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Delete All
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={handleDeleteAllMembers}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete All
+                    </button>
+                  )}
                 </div>
               </div>
               
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-1">
-                  <h3 className="text-xl font-semibold mb-4 flex items-center">
-                    <Plus className="w-5 h-5 mr-2" />
-                    Add New Member
-                  </h3>
-                  <div className="space-y-4">
-                    <input
-                      type="text"
-                      value={newMember.name}
-                      onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
-                      placeholder="First and Last Name *"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    />
-                    <input
-                      type="text"
-                      value={newMember.cardNumber}
-                      onChange={(e) => setNewMember({ ...newMember, cardNumber: e.target.value })}
-                      placeholder="Library Card Number *"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    />
-                    <button onClick={handleAddMember} className="w-full bg-purple-500 hover:bg-purple-600 text-white py-3 rounded-lg font-semibold">Add Member</button>
+                {isAdmin && (
+                  <div className="lg:col-span-1">
+                    <h3 className="text-xl font-semibold mb-4 flex items-center">
+                      <Plus className="w-5 h-5 mr-2" />
+                      Add New Member
+                    </h3>
+                    <div className="space-y-4">
+                      <input
+                        type="text"
+                        value={newMember.name}
+                        onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
+                        placeholder="First and Last Name *"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                      <input
+                        type="text"
+                        value={newMember.cardNumber}
+                        onChange={(e) => setNewMember({ ...newMember, cardNumber: e.target.value })}
+                        placeholder="Library Card Number *"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                      <button onClick={handleAddMember} className="w-full bg-purple-500 hover:bg-purple-600 text-white py-3 rounded-lg font-semibold">Add Member</button>
+                    </div>
                   </div>
-                </div>
+                )}
                 
                 <div className="lg:col-span-2">
                   <div className="flex items-center justify-between mb-4">
@@ -2029,9 +2082,11 @@ const LibraryApp = ({ user, onLogout }) => {
                                   {memberOverdue.length > 0 && <span className="ml-3 text-red-600">Overdue: {memberOverdue.length}</span>}
                                 </div>
                               </div>
-                              <button onClick={() => handleDeleteMember(member.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg ml-4" title="Delete member">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {isAdmin && (
+                                <button onClick={() => handleDeleteMember(member.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg ml-4" title="Delete member">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -2157,6 +2212,9 @@ const LibraryApp = ({ user, onLogout }) => {
       );
       
       case 'settings': return (
+        !isAdmin ? (
+          <MainScreen />
+        ) : (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 to-slate-100 p-6">
           <div className="max-w-4xl mx-auto">
             <div className="bg-white rounded-xl shadow-lg p-8">
@@ -2212,6 +2270,7 @@ const LibraryApp = ({ user, onLogout }) => {
             </div>
           </div>
         </div>
+        )
       );
       
       default: return <MainScreen />;
@@ -2223,6 +2282,7 @@ const LibraryApp = ({ user, onLogout }) => {
 
 const Root = () => {
   const [verified, setVerified] = useState(() => sessionStorage.getItem('libraryVerified') === 'true');
+  const [role, setRole] = useState(() => sessionStorage.getItem('libraryRole') || 'admin');
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(verified);
 
@@ -2274,7 +2334,7 @@ const Root = () => {
   };
 
   if (!verified) {
-    return <VerificationScreen onVerified={() => setVerified(true)} />;
+    return <VerificationScreen onVerified={(newRole) => { setVerified(true); setRole(newRole || 'admin'); }} />;
   }
 
   if (loading) {
@@ -2285,7 +2345,7 @@ const Root = () => {
     return <LoginScreen onLogin={setUser} />;
   }
 
-  return <LibraryApp user={user} onLogout={handleLogout} />;
+  return <LibraryApp user={user} onLogout={handleLogout} role={role} />;
 };
 
 const App = () => (
