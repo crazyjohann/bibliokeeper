@@ -1240,7 +1240,7 @@ const LibraryApp = ({ user, onLogout, role }) => {
           const categoryRaw = row['COLLECTIONS'] || row['Collections'] || row['Category'] || row['CATEGORY'] || 'General';
           const languageRaw = row['LANGUAGE'] || row['Language'] || '';
           
-          const isbn = String(isbnRaw).trim().replace(/[^0-9X]/gi, '');
+         const isbn = String(isbnRaw).trim().replace(/[^0-9X]/gi, '');
           const title = String(titleRaw).trim();
           const author = String(authorRaw).trim();
           const category = String(categoryRaw).trim() || 'General';
@@ -1252,11 +1252,11 @@ const LibraryApp = ({ user, onLogout, role }) => {
           
           const finalAuthor = author || 'Unknown Author';
           
-          if (!isbn || isbn.length < 10) {
-            booksWithoutISBN++;
-          }
-          
-          const finalISBN = (isbn && isbn.length >= 10) ? isbn : '';
+         if (!isbn) {
+           booksWithoutISBN++;
+         }
+         
+         const finalISBN = isbn || '';
           
           if (finalISBN) {
             const existingBook = books.find(b => b.isbn === finalISBN);
