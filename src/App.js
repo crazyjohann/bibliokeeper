@@ -20,7 +20,7 @@ const withTimeout = (promise, timeoutMs, message) => {
 const VerificationScreen = ({ onVerified }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [verified, setVerified] = useState(false);
+  const [verified, setVerified] = useState(() => sessionStorage.getItem('libraryVerified') === 'true');
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -39,6 +39,8 @@ const VerificationScreen = ({ onVerified }) => {
 
     setError('');
     setVerified(true);
+    sessionStorage.setItem('libraryVerified', 'true');
+    sessionStorage.setItem('libraryRole', role);
     setPassword('');
     setTimeout(() => {
       if (typeof onVerified === 'function') {
@@ -2279,8 +2281,8 @@ const LibraryApp = ({ user, onLogout, role }) => {
 };
 
 const Root = () => {
-  const [verified, setVerified] = useState(false);
-  const [role, setRole] = useState('admin');
+  const [verified, setVerified] = useState(() => sessionStorage.getItem('libraryVerified') === 'true');
+  const [role, setRole] = useState(() => sessionStorage.getItem('libraryRole') || 'admin');
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(verified);
 
@@ -2324,10 +2326,15 @@ const Root = () => {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-      setUser(null);
     } catch (err) {
       console.error("Logout error:", err);
       alert("Error signing out. Please try again.");
+    } finally {
+      setUser(null);
+      setVerified(false);
+      setRole('admin');
+      sessionStorage.removeItem('libraryVerified');
+      sessionStorage.removeItem('libraryRole');
     }
   };
 
